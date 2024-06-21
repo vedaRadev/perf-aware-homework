@@ -1,11 +1,11 @@
 use std::{
     env,
     process,
-    fs,
-    io::{ prelude::*, BufReader },
+    fmt,
+    fs::File,
+    io::{ prelude::*, BufReader }
 };
 
-//      FULL 16 BIT REG                 LOWER 8 BIT REG                 UPPER 8 BIT REG
 const REG_NAME_AX: &str = "ax"; const REG_NAME_AL: &str = "al"; const REG_NAME_AH: &str = "ah";
 const REG_NAME_CX: &str = "cx"; const REG_NAME_CL: &str = "cl"; const REG_NAME_CH: &str = "ch";
 const REG_NAME_DX: &str = "dx"; const REG_NAME_DL: &str = "dl"; const REG_NAME_DH: &str = "dh";
@@ -17,8 +17,8 @@ const REG_NAME_DI: &str = "di";
 
 const OP_NAME_MOV: &str = "mov";
 
-fn get_register_name(encoded_register: u8, wide: bool) -> Option<&'static str> {
-    match encoded_register {
+fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
+    match reg {
         0 if wide => Some(REG_NAME_AX),
         0 if !wide => Some(REG_NAME_AL),
 
@@ -47,12 +47,294 @@ fn get_register_name(encoded_register: u8, wide: bool) -> Option<&'static str> {
     }
 }
 
-fn get_op_name(encoded_op: u8) -> Option<&'static str> {
-    match encoded_op {
-        0b100010 => Some(OP_NAME_MOV),
+fn get_effective_address_calculation_expression(mode: u8, reg_or_mem: u8, disp_lo: Option<u8>, disp_hi: Option<u8>) -> Option<String> {
+    let mut is_disp_negative = false;
+    let disp = match (disp_lo, disp_hi) {
+        (None, None) => 0,
+        (Some(lo), None) => {
+            is_disp_negative = lo.rotate_left(1) & 1 == 1;
+            (if is_disp_negative { lo.wrapping_neg() } else { lo }) as u16
+        },
+        (Some(lo), Some(hi)) => {
+            is_disp_negative = hi.rotate_left(1) & 1 == 1;
+            let val = (hi as u16) << 8 | lo as u16;
+            if is_disp_negative { val.wrapping_neg() } else { val }
+        }
+        _ => panic!("disp_hi was set but disp_lo was not"),
+    };
+    let disp_op = if is_disp_negative { "-" } else { "+" };
 
-        _ => None,
+    match reg_or_mem {
+        0b000 if disp != 0 => Some(format!(
+            "[{} + {} {} {}]",
+            REG_NAME_BX,
+            REG_NAME_SI,
+            disp_op,
+            disp
+        )),
+        0b000 => Some(format!("[{} + {}]", REG_NAME_BX, REG_NAME_SI)),
+
+        0b001 if disp != 0 => Some(format!(
+            "[{} + {} {} {}]",
+            REG_NAME_BX,
+            REG_NAME_DI,
+            disp_op,
+            disp
+        )),
+        0b001 => Some(format!("[{} + {}]", REG_NAME_BX, REG_NAME_DI)),
+
+        0b010 if disp != 0 => Some(format!(
+            "[{} + {} {} {}]",
+            REG_NAME_BP,
+            REG_NAME_SI,
+            disp_op,
+            disp
+        )),
+        0b010 => Some(format!("[{} + {}]", REG_NAME_BP, REG_NAME_SI)),
+
+        0b011 if disp != 0 => Some(format!(
+            "[{} + {} {} {}]",
+            REG_NAME_BP,
+            REG_NAME_DI,
+            disp_op,
+            disp
+        )),
+        0b011 => Some(format!("[{} + {}]", REG_NAME_BP, REG_NAME_DI)),
+
+        0b100 if disp != 0 => Some(format!(
+            "[{} {} {}]",
+            REG_NAME_SI,
+            disp_op,
+            disp
+        )),
+        0b100 => Some(format!("[{}]", REG_NAME_SI)),
+
+        0b101 if disp != 0 => Some(format!(
+            "[{} {} {}]",
+            REG_NAME_DI,
+            disp_op,
+            disp
+        )),
+        0b101 => Some(format!("[{}]", REG_NAME_DI)),
+
+        0b110 if mode == 0b00 => Some(format!("[{}]", disp)), // direct address
+        0b110 if disp == 0 => Some(format!("[{}]", REG_NAME_BP)),
+        0b110 => Some(format!(
+            "[{} {} {}]",
+            REG_NAME_BP,
+            disp_op,
+            disp
+        )),
+
+        0b111 if disp != 0 => Some(format!(
+            "[{} {} {}]",
+            REG_NAME_BX,
+            disp_op,
+            disp
+        )),
+        0b111 => Some(format!("[{}]", REG_NAME_BX)),
+
+        _ => None
     }
+}
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+enum Instruction {
+    Mov_RegMem_ToFrom_Reg {
+        dest: bool,
+        wide: bool,
+        mode: u8,
+        reg: u8,
+        reg_or_mem: u8,
+        disp_lo: Option<u8>,
+        disp_hi: Option<u8>,
+    },
+
+    Mov_Imm_To_RegMem {
+        wide: bool,
+        mode: u8,
+        reg_or_mem: u8,
+        disp_lo: Option<u8>,
+        disp_hi: Option<u8>,
+        data: u16,
+    },
+
+    Mov_Imm_To_Reg {
+        wide: bool,
+        reg: u8,
+        data: u16,
+    },
+
+    Mov_Mem_To_Acc {
+        wide: bool,
+        address: u16,
+    },
+
+    Mov_Acc_To_Mem {
+        wide: bool,
+        address: u16,
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi } => {
+                let reg_name = get_register_name(reg, wide)
+                    .unwrap_or("invalid register")
+                    .to_string();
+                let reg_name_or_mem_expr = if mode == 0b11 {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_effective_address_calculation_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if dest {
+                    write!(formatter, "{} {}, {}", OP_NAME_MOV, reg_name, reg_name_or_mem_expr)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_MOV, reg_name_or_mem_expr, reg_name)
+                }
+            },
+
+            #[allow(unused_variables)]
+            Instruction::Mov_Imm_To_RegMem { wide, mode, reg_or_mem, disp_lo, disp_hi, data } => {
+                let reg_name_or_mem_expr = if mode == 0b11 {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_effective_address_calculation_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if wide {
+                    write!(formatter, "{} {}, word {}", OP_NAME_MOV, reg_name_or_mem_expr, data)
+                } else {
+                    write!(formatter, "{} {}, byte {}", OP_NAME_MOV, reg_name_or_mem_expr, data)
+                }
+            },
+
+            Instruction::Mov_Imm_To_Reg { reg, data, wide } => {
+                let reg_name = get_register_name(reg, wide)
+                    .unwrap_or("invalid register")
+                    .to_string();
+
+                write!(formatter, "{} {}, {}", OP_NAME_MOV, reg_name, data)
+            },
+
+            #[allow(unused_variables)]
+            Instruction::Mov_Mem_To_Acc { wide, address } => {
+                let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
+                
+                write!(formatter, "{} {}, [{}]", OP_NAME_MOV, reg_name, address)
+            },
+
+            #[allow(unused_variables)]
+            Instruction::Mov_Acc_To_Mem { wide, address } => {
+                let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
+
+
+                write!(formatter, "{} [{}], {}", OP_NAME_MOV, address, reg_name)
+            }
+        }
+    }
+}
+
+// #[inline(always)]
+fn read_byte(instruction_stream: &mut BufReader<File>) -> u8 {
+    let mut byte = [0u8; 1];
+    instruction_stream.read_exact(&mut byte).expect("Failed to read byte from instruction stream");
+    unsafe { std::mem::transmute::<[u8; 1], u8>(byte) }
+}
+
+// #[inline(always)]
+fn read_word(instruction_stream: &mut BufReader<File>) -> u16 {
+    let mut word = [0u8; 2];
+    instruction_stream.read_exact(&mut word).expect("Failed to read word from instruction stream");
+    unsafe { std::mem::transmute::<[u8; 2], u16>(word) }
+}
+
+fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instruction> {
+    let byte = read_byte(instruction_stream);
+
+    let opcode = byte >> 4;
+    if opcode == 0b1011 {
+        let wide = (byte >> 3) & 0b1 == 1;
+        let reg = byte & 0b111;
+        let data = if wide {
+            read_word(instruction_stream)
+        } else {
+            read_byte(instruction_stream) as u16
+        };
+
+        return Some(Instruction::Mov_Imm_To_Reg { wide, reg, data })
+    }
+
+    let opcode = byte >> 2;
+    if opcode == 0b100010 {
+        let operands = read_byte(instruction_stream);
+
+        let dest = (byte & 0b10) >> 1 == 1;
+        let wide = byte & 0b01 == 1;
+        let mode = operands >> 6;
+        let reg = (operands & 0b111000) >> 3;
+        let reg_or_mem = operands & 0b111;
+
+        let (disp_lo, disp_hi) = match mode {
+            0b00 if reg_or_mem == 0b110 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
+            0b10 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
+            0b01 => (Some(read_byte(instruction_stream)), None),
+            _ => (None, None),
+        };
+
+        return Some(Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+    }
+
+    let opcode = byte >> 1;
+    match opcode {
+        0b1100011 => {
+            let operands = read_byte(instruction_stream);
+
+            let wide = byte & 0b1 == 1;
+            let mode = operands >> 6;
+            let reg_or_mem = operands & 0b111;
+            let (disp_lo, disp_hi) = match mode {
+                0b00 if reg_or_mem == 0b110 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
+                0b10 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
+                0b01 => (Some(read_byte(instruction_stream)), None),
+                _ => (None, None),
+            };
+
+            let data = if wide {
+                read_word(instruction_stream)
+            } else {
+                read_byte(instruction_stream) as u16
+            };
+
+            return Some(Instruction::Mov_Imm_To_RegMem { wide, mode, reg_or_mem, data, disp_lo, disp_hi });
+        },
+
+        0b1010000 => {
+            let wide = byte & 0b1 == 1;
+            let address = read_word(instruction_stream);
+
+            return Some(Instruction::Mov_Mem_To_Acc { wide, address });
+        },
+
+        0b1010001 => {
+            let wide = byte & 0b1 == 1;
+            let address = read_word(instruction_stream);
+            
+            return Some(Instruction::Mov_Acc_To_Mem { wide, address });
+        },
+        _ => {}
+    };
+
+    None
 }
 
 fn main() {
@@ -62,28 +344,15 @@ fn main() {
         process::exit(1);
     }
 
-    let file = fs::File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
+    let file = File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
     let mut instruction_stream = BufReader::new(file);
 
-    println!("bits 16\n"); // header just for diffing TODO remove?
+    println!("bits 16\n"); // header needed to specify 16-bit wide registers
     while !instruction_stream.fill_buf().expect("Failed to read instruction stream").is_empty() {
-        let mut specifier = [0u8; 1];
-        instruction_stream.read_exact(&mut specifier).expect("Failed to read op type");
-        let specifier = unsafe { std::mem::transmute::<[u8; 1], u8>(specifier) };
-        let op_type = specifier >> 2;
-        let dest = (specifier & 0b10) >> 1 == 1;
-        let wide = specifier & 0b01 == 1;
-
-        let mut operands = [0u8; 1];
-        instruction_stream.read_exact(&mut operands).expect("Failed to read mov operands");
-        let operands = unsafe { std::mem::transmute::<[u8; 1], u8>(operands) };
-        let mode = operands >> 6;
-        let reg = (operands & 0b111000) >> 3;
-        let reg_mem = operands & 0b111;
-
-        let op_name = get_op_name(op_type).unwrap_or_else(|| panic!("{} is not a valid operation encoding", op_type));
-        let dest_name = get_register_name(if dest { reg } else { reg_mem }, wide).unwrap_or_else(|| panic!("{} or {} is not a valid register encoding", reg, reg_mem));
-        let source_name = get_register_name(if dest { reg_mem } else { reg }, wide).unwrap_or_else(|| panic!("{} or {} is not a valid register encoding", reg, reg_mem));
-        println!("{} {}, {}", op_name, dest_name, source_name);
+        if let Some(instruction) = decode_instruction(&mut instruction_stream) {
+            println!("{}", instruction);
+        } else {
+            println!("unrecognized instruction");
+        }
     }
 }

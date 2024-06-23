@@ -47,20 +47,19 @@ fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
     }
 }
 
-fn get_effective_address_calculation_expression(mode: u8, reg_or_mem: u8, disp_lo: Option<u8>, disp_hi: Option<u8>) -> Option<String> {
+fn get_memory_expression(mode: u8, reg_or_mem: u8, disp_lo: u8, disp_hi: u8) -> Option<String> {
     let mut is_disp_negative = false;
     let disp = match (disp_lo, disp_hi) {
-        (None, None) => 0,
-        (Some(lo), None) => {
+        (0, 0) => 0,
+        (lo, 0) => {
             is_disp_negative = lo.rotate_left(1) & 1 == 1;
             (if is_disp_negative { lo.wrapping_neg() } else { lo }) as u16
         },
-        (Some(lo), Some(hi)) => {
+        (lo, hi) => {
             is_disp_negative = hi.rotate_left(1) & 1 == 1;
             let val = (hi as u16) << 8 | lo as u16;
             if is_disp_negative { val.wrapping_neg() } else { val }
         }
-        _ => panic!("disp_hi was set but disp_lo was not"),
     };
     let disp_op = if is_disp_negative { "-" } else { "+" };
 
@@ -147,16 +146,16 @@ enum Instruction {
         mode: u8,
         reg: u8,
         reg_or_mem: u8,
-        disp_lo: Option<u8>,
-        disp_hi: Option<u8>,
+        disp_lo: u8,
+        disp_hi: u8,
     },
 
     Mov_Imm_To_RegMem {
         wide: bool,
         mode: u8,
         reg_or_mem: u8,
-        disp_lo: Option<u8>,
-        disp_hi: Option<u8>,
+        disp_lo: u8,
+        disp_hi: u8,
         data: u16,
     },
 
@@ -189,7 +188,7 @@ impl fmt::Display for Instruction {
                         .unwrap_or("invalid register")
                         .to_string()
                 } else {
-                    get_effective_address_calculation_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
                         .unwrap_or(String::from("[unrecognized address calculation expression]"))
                 };
 
@@ -200,14 +199,13 @@ impl fmt::Display for Instruction {
                 }
             },
 
-            #[allow(unused_variables)]
             Instruction::Mov_Imm_To_RegMem { wide, mode, reg_or_mem, disp_lo, disp_hi, data } => {
                 let reg_name_or_mem_expr = if mode == 0b11 {
                     get_register_name(reg_or_mem, wide)
                         .unwrap_or("invalid register")
                         .to_string()
                 } else {
-                    get_effective_address_calculation_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
                         .unwrap_or(String::from("[unrecognized address calculation expression]"))
                 };
 
@@ -226,14 +224,12 @@ impl fmt::Display for Instruction {
                 write!(formatter, "{} {}, {}", OP_NAME_MOV, reg_name, data)
             },
 
-            #[allow(unused_variables)]
             Instruction::Mov_Mem_To_Acc { wide, address } => {
                 let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
                 
                 write!(formatter, "{} {}, [{}]", OP_NAME_MOV, reg_name, address)
             },
 
-            #[allow(unused_variables)]
             Instruction::Mov_Acc_To_Mem { wide, address } => {
                 let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
 
@@ -244,18 +240,27 @@ impl fmt::Display for Instruction {
     }
 }
 
-// #[inline(always)]
 fn read_byte(instruction_stream: &mut BufReader<File>) -> u8 {
     let mut byte = [0u8; 1];
     instruction_stream.read_exact(&mut byte).expect("Failed to read byte from instruction stream");
     unsafe { std::mem::transmute::<[u8; 1], u8>(byte) }
 }
 
-// #[inline(always)]
 fn read_word(instruction_stream: &mut BufReader<File>) -> u16 {
     let mut word = [0u8; 2];
     instruction_stream.read_exact(&mut word).expect("Failed to read word from instruction stream");
     unsafe { std::mem::transmute::<[u8; 2], u16>(word) }
+}
+
+#[inline(always)]
+fn read_displacement_bytes(instruction_stream: &mut BufReader<File>, mode: u8, reg_or_mem: u8) -> (u8, u8) {
+    // returns (disp_lo, disp_hi)
+    match mode {
+        0b00 if reg_or_mem == 0b110 => (read_byte(instruction_stream), read_byte(instruction_stream)),
+        0b10 => (read_byte(instruction_stream), read_byte(instruction_stream)),
+        0b01 => (read_byte(instruction_stream), 0),
+        _ => (0, 0),
+    }
 }
 
 fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instruction> {
@@ -283,13 +288,7 @@ fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instru
         let mode = operands >> 6;
         let reg = (operands & 0b111000) >> 3;
         let reg_or_mem = operands & 0b111;
-
-        let (disp_lo, disp_hi) = match mode {
-            0b00 if reg_or_mem == 0b110 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
-            0b10 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
-            0b01 => (Some(read_byte(instruction_stream)), None),
-            _ => (None, None),
-        };
+        let (disp_lo, disp_hi) = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
 
         return Some(Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
     }
@@ -302,13 +301,7 @@ fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instru
             let wide = byte & 0b1 == 1;
             let mode = operands >> 6;
             let reg_or_mem = operands & 0b111;
-            let (disp_lo, disp_hi) = match mode {
-                0b00 if reg_or_mem == 0b110 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
-                0b10 => (Some(read_byte(instruction_stream)), Some(read_byte(instruction_stream))),
-                0b01 => (Some(read_byte(instruction_stream)), None),
-                _ => (None, None),
-            };
-
+            let (disp_lo, disp_hi) = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
             let data = if wide {
                 read_word(instruction_stream)
             } else {

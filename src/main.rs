@@ -173,6 +173,80 @@ enum Instruction {
     Mov_Acc_To_Mem {
         wide: bool,
         address: u16,
+    },
+
+    Add_RegMem_With_Reg_to_Either {
+        dest: bool,
+        wide: bool,
+        mode: u8,
+        reg: u8,
+        reg_or_mem: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+    },
+
+    Add_Imm_to_RegMem {
+        sign_extend: bool,
+        wide: bool,
+        mode: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+        data: u16,
+    },
+
+    Add_Imm_To_Acc {
+        wide: bool,
+        data: u16,
+    },
+
+    Sub_RegMem_And_Reg_To_Either {
+        dest: bool,
+        wide: bool,
+        mode: u8,
+        reg: u8,
+        reg_or_mem: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+    },
+
+    Sub_Imm_From_RegMem {
+        sign_extend: bool,
+        wide: bool,
+        mode: u8,
+        reg_or_mem: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+        data: u16,
+    },
+
+    Sub_Imm_From_Acc {
+        wide: bool,
+        data: u16,
+    },
+
+    Cmp_RegMem_And_Reg {
+        dest: bool,
+        wide: bool,
+        mode: u8,
+        reg: u8,
+        reg_or_mem: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+    },
+
+    Cmp_Imm_With_RegMem {
+        sign_extend: bool,
+        wide: bool,
+        mode: u8,
+        reg_or_mem: u8,
+        disp_lo: u8,
+        disp_hi: u8,
+        data: u16,
+    },
+
+    Cmp_Imm_With_Acc {
+        wide: bool,
+        data: u8
     }
 }
 

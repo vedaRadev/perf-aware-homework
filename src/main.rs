@@ -1,9 +1,9 @@
 use std::{
     env,
-    process,
     fmt,
     fs::File,
-    io::{ prelude::*, BufReader }
+    io::{ prelude::*, BufReader },
+    process
 };
 
 const REG_NAME_AX: &str = "ax"; const REG_NAME_AL: &str = "al"; const REG_NAME_AH: &str = "ah";
@@ -19,6 +19,26 @@ const OP_NAME_MOV: &str = "mov";
 const OP_NAME_ADD: &str = "add";
 const OP_NAME_SUB: &str = "sub";
 const OP_NAME_CMP: &str = "cmp";
+const OP_NAME_JE: &str = "je";
+const OP_NAME_JL: &str = "jl";
+const OP_NAME_JLE: &str = "jle";
+const OP_NAME_JB : &str = "jb";
+const OP_NAME_JBE: &str = "jbe";
+const OP_NAME_JP: &str = "jp";
+const OP_NAME_JO: &str = "jo";
+const OP_NAME_JS: &str = "js";
+const OP_NAME_JNE: &str = "jne";
+const OP_NAME_JNL: &str = "jnl";
+const OP_NAME_JG: &str = "jg";
+const OP_NAME_JNB: &str = "jnb";
+const OP_NAME_JA: &str = "ja";
+const OP_NAME_JNP: &str = "jnp";
+const OP_NAME_JNO: &str = "jno";
+const OP_NAME_JNS: &str = "jns";
+const OP_NAME_LOOP: &str = "loop";
+const OP_NAME_LOOPZ: &str = "loopz";
+const OP_NAME_LOOPNZ: &str = "loopnz";
+const OP_NAME_JCXZ: &str = "jcxz";
 
 fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
     match reg {
@@ -251,6 +271,36 @@ enum Instruction {
     Cmp_Imm_With_Acc {
         wide: bool,
         data: u16
+    },
+
+    Jmp_On_Equal { inc: u8 }, // je
+    Jmp_On_Less { inc: u8 }, // jl
+    Jmp_On_Less_Or_Equal { inc: u8 }, // jle
+    Jmp_On_Below { inc: u8 }, // jb
+    Jmp_On_Below_Or_Equal { inc: u8 }, // jbe
+    Jmp_On_Greater { inc: u8 }, // jg
+    Jmp_On_Above { inc: u8 }, // ja
+    Jmp_On_Parity { inc: u8 }, // jp
+    Jmp_On_Overflow { inc: u8 }, // jo
+    Jmp_On_Sign { inc: u8 }, // js
+    Jmp_On_Not_Equal { inc: u8 }, // jne
+    Jmp_On_Not_Less { inc: u8 }, // jnl
+    Jmp_On_Not_Below { inc: u8 }, // jnb
+    Jmp_On_Not_Parity { inc: u8 }, // jnp
+    Jmp_On_Not_Overflow { inc: u8 }, // jno
+    Jmp_On_Not_Sign { inc: u8 }, // jns
+    Jmp_On_CX_Zero { inc: u8 }, // jcxz
+    
+    Loop { inc: u8 }, // loop
+    Loop_While_Zero { inc: u8 }, // joopz
+    Loop_While_Not_Zero { inc: u8 }, // loopnz
+}
+
+fn get_formatted_jmp_loop_instruction(formatter: &mut fmt::Formatter, op_name: &str, inc: u8) -> fmt::Result {
+    if inc.rotate_left(1) & 1 == 1 {
+        write!(formatter, "{} -{}", op_name, inc.wrapping_neg())
+    } else {
+        write!(formatter, "{} {}", op_name, inc)
     }
 }
 
@@ -474,6 +524,31 @@ impl fmt::Display for Instruction {
                     write!(formatter, "{} {}, {}", OP_NAME_CMP, REG_NAME_AL, data)
                 }
             }
+
+            //***************
+            // JMP / LOOP
+            //***************
+
+            Instruction::Jmp_On_Equal { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JE, inc),
+            Instruction::Jmp_On_Less { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JL, inc),
+            Instruction::Jmp_On_Less_Or_Equal { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JLE, inc),
+            Instruction::Jmp_On_Below { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JB, inc),
+            Instruction::Jmp_On_Below_Or_Equal { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JBE, inc),
+            Instruction::Jmp_On_Greater { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JG, inc),
+            Instruction::Jmp_On_Above { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JA, inc),
+            Instruction::Jmp_On_Parity { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JP, inc),
+            Instruction::Jmp_On_Overflow { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JO, inc),
+            Instruction::Jmp_On_Sign { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JS, inc),
+            Instruction::Jmp_On_Not_Equal { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNE, inc),
+            Instruction::Jmp_On_Not_Less { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNL, inc),
+            Instruction::Jmp_On_Not_Below { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNB, inc),
+            Instruction::Jmp_On_Not_Parity { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNP, inc),
+            Instruction::Jmp_On_Not_Overflow { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNO, inc),
+            Instruction::Jmp_On_Not_Sign { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JNS, inc),
+            Instruction::Jmp_On_CX_Zero { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_JCXZ, inc),
+            Instruction::Loop { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_LOOP, inc),
+            Instruction::Loop_While_Zero { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_LOOPZ, inc),
+            Instruction::Loop_While_Not_Zero { inc } => get_formatted_jmp_loop_instruction(formatter, OP_NAME_LOOPNZ, inc),
         }
     }
 }
@@ -618,6 +693,31 @@ fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instru
             return Some(Instruction::Cmp_Imm_With_Acc { wide, data });
         },
 
+        _ => {}
+    };
+
+    let opcode = byte;
+    match opcode {
+        0b01110100 => return Some(Instruction::Jmp_On_Equal { inc: read_byte(instruction_stream) }),
+        0b01111100 => return Some(Instruction::Jmp_On_Less { inc: read_byte(instruction_stream) }),
+        0b01111110 => return Some(Instruction::Jmp_On_Less_Or_Equal { inc: read_byte(instruction_stream) }),
+        0b01110010 => return Some(Instruction::Jmp_On_Below { inc: read_byte(instruction_stream) }),
+        0b01110110 => return Some(Instruction::Jmp_On_Below_Or_Equal { inc: read_byte(instruction_stream) }),
+        0b01111111 => return Some(Instruction::Jmp_On_Greater { inc: read_byte(instruction_stream) }),
+        0b01110111 => return Some(Instruction::Jmp_On_Above { inc: read_byte(instruction_stream) }),
+        0b01111010 => return Some(Instruction::Jmp_On_Parity { inc: read_byte(instruction_stream) }),
+        0b01110000 => return Some(Instruction::Jmp_On_Overflow { inc: read_byte(instruction_stream) }),
+        0b01111000 => return Some(Instruction::Jmp_On_Sign { inc: read_byte(instruction_stream) }),
+        0b01110101 => return Some(Instruction::Jmp_On_Not_Equal { inc: read_byte(instruction_stream) }),
+        0b01111101 => return Some(Instruction::Jmp_On_Not_Less { inc: read_byte(instruction_stream) }),
+        0b01110011 => return Some(Instruction::Jmp_On_Not_Below { inc: read_byte(instruction_stream) }),
+        0b01111011 => return Some(Instruction::Jmp_On_Not_Parity { inc: read_byte(instruction_stream) }),
+        0b01110001 => return Some(Instruction::Jmp_On_Not_Overflow { inc: read_byte(instruction_stream) }),
+        0b01111001 => return Some(Instruction::Jmp_On_Not_Sign { inc: read_byte(instruction_stream) }),
+        0b11100011 => return Some(Instruction::Jmp_On_CX_Zero { inc: read_byte(instruction_stream) }),
+        0b11100010 => return Some(Instruction::Loop { inc: read_byte(instruction_stream) }),
+        0b11100001 => return Some(Instruction::Loop_While_Zero { inc: read_byte(instruction_stream) }),
+        0b11100000 => return Some(Instruction::Loop_While_Not_Zero { inc: read_byte(instruction_stream) }),
         _ => {}
     };
 

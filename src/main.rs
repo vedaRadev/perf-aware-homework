@@ -16,6 +16,9 @@ const REG_NAME_SI: &str = "si";
 const REG_NAME_DI: &str = "di";
 
 const OP_NAME_MOV: &str = "mov";
+const OP_NAME_ADD: &str = "add";
+const OP_NAME_SUB: &str = "sub";
+const OP_NAME_CMP: &str = "cmp";
 
 fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
     match reg {
@@ -189,6 +192,7 @@ enum Instruction {
         sign_extend: bool,
         wide: bool,
         mode: u8,
+        reg_or_mem: u8,
         disp_lo: u8,
         disp_hi: u8,
         data: u16,
@@ -246,13 +250,18 @@ enum Instruction {
 
     Cmp_Imm_With_Acc {
         wide: bool,
-        data: u8
+        data: u16
     }
 }
 
 impl fmt::Display for Instruction {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+
+            //***************
+            // MOV
+            //***************
+
             Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi } => {
                 let reg_name = get_register_name(reg, wide)
                     .unwrap_or("invalid register")
@@ -300,15 +309,170 @@ impl fmt::Display for Instruction {
 
             Instruction::Mov_Mem_To_Acc { wide, address } => {
                 let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
-                
+
                 write!(formatter, "{} {}, [{}]", OP_NAME_MOV, reg_name, address)
             },
 
             Instruction::Mov_Acc_To_Mem { wide, address } => {
                 let reg_name = if wide { REG_NAME_AX } else { REG_NAME_AL }.to_string();
 
-
                 write!(formatter, "{} [{}], {}", OP_NAME_MOV, address, reg_name)
+            },
+
+            //***************
+            // ADD
+            //***************
+
+            Instruction::Add_RegMem_With_Reg_to_Either { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi } => {
+                let reg_name = get_register_name(reg, wide)
+                    .unwrap_or("invalid register")
+                    .to_string();
+                let reg_name_or_mem_expr = if mode == 0b11 {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if dest {
+                    write!(formatter, "{} {}, {}", OP_NAME_ADD, reg_name, reg_name_or_mem_expr)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_ADD, reg_name_or_mem_expr, reg_name)
+                }
+            },
+
+            Instruction::Add_Imm_to_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data } => {
+                let is_reg_mode = mode == 0b11;
+                let reg_name_or_mem_expr = if is_reg_mode {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if is_reg_mode {
+                    write!(formatter, "{} {}, {}", OP_NAME_ADD, reg_name_or_mem_expr, data)
+                } else if sign_extend && wide {
+                    write!(formatter, "{} {}, word {}", OP_NAME_ADD, reg_name_or_mem_expr, data)
+                } else {
+                    write!(formatter, "{} {}, byte {}", OP_NAME_ADD, reg_name_or_mem_expr, data)
+                }
+            },
+
+            Instruction::Add_Imm_To_Acc { wide, data } => {
+                if wide {
+                    write!(formatter, "{} {}, {}", OP_NAME_ADD, REG_NAME_AX, data)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_ADD, REG_NAME_AL, data)
+                }
+            },
+
+            //***************
+            // SUB
+            //***************
+
+            Instruction::Sub_RegMem_And_Reg_To_Either { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi } => {
+                let reg_name = get_register_name(reg, wide)
+                    .unwrap_or("invalid register")
+                    .to_string();
+                let reg_name_or_mem_expr = if mode == 0b11 {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if dest {
+                    write!(formatter, "{} {}, {}", OP_NAME_SUB, reg_name, reg_name_or_mem_expr)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_SUB, reg_name_or_mem_expr, reg_name)
+                }
+            },
+
+            Instruction::Sub_Imm_From_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data } => {
+                let is_reg_mode = mode == 0b11;
+                let reg_name_or_mem_expr = if is_reg_mode {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if is_reg_mode {
+                    write!(formatter, "{} {}, {}", OP_NAME_SUB, reg_name_or_mem_expr, data)
+                } else if sign_extend && wide {
+                    write!(formatter, "{} {}, word {}", OP_NAME_SUB, reg_name_or_mem_expr, data)
+                } else {
+                    write!(formatter, "{} {}, byte {}", OP_NAME_SUB, reg_name_or_mem_expr, data)
+                }
+            },
+
+            Instruction::Sub_Imm_From_Acc { wide, data } => {
+                if wide {
+                    write!(formatter, "{} {}, {}", OP_NAME_SUB, REG_NAME_AX, data)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_SUB, REG_NAME_AL, data)
+                }
+            },
+
+            //***************
+            // CMP
+            //***************
+
+            Instruction::Cmp_RegMem_And_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi } => {
+                let reg_name = get_register_name(reg, wide)
+                    .unwrap_or("invalid register")
+                    .to_string();
+                let reg_name_or_mem_expr = if mode == 0b11 {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if dest {
+                    write!(formatter, "{} {}, {}", OP_NAME_CMP, reg_name, reg_name_or_mem_expr)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_CMP, reg_name_or_mem_expr, reg_name)
+                }
+            },
+
+            Instruction::Cmp_Imm_With_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data } => {
+                let is_reg_mode = mode == 0b11;
+                let reg_name_or_mem_expr = if is_reg_mode {
+                    get_register_name(reg_or_mem, wide)
+                        .unwrap_or("invalid register")
+                        .to_string()
+                } else {
+                    get_memory_expression(mode, reg_or_mem, disp_lo, disp_hi)
+                        .unwrap_or(String::from("[unrecognized address calculation expression]"))
+                };
+
+                if is_reg_mode {
+                    write!(formatter, "{} {}, {}", OP_NAME_CMP, reg_name_or_mem_expr, data)
+                } else if sign_extend && wide {
+                    write!(formatter, "{} {}, word {}", OP_NAME_CMP, reg_name_or_mem_expr, data)
+                } else {
+                    write!(formatter, "{} {}, byte {}", OP_NAME_CMP, reg_name_or_mem_expr, data)
+                }
+            },
+
+            Instruction::Cmp_Imm_With_Acc { wide, data } => {
+                if wide {
+                    write!(formatter, "{} {}, {}", OP_NAME_CMP, REG_NAME_AX, data)
+                } else {
+                    write!(formatter, "{} {}, {}", OP_NAME_CMP, REG_NAME_AL, data)
+                }
             }
         }
     }
@@ -337,6 +501,29 @@ fn read_displacement_bytes(instruction_stream: &mut BufReader<File>, mode: u8, r
     }
 }
 
+#[inline(always)]
+fn read_data(instruction_stream: &mut BufReader<File>, wide: bool) -> u16 {
+    if wide {
+        read_word(instruction_stream)
+    } else {
+        read_byte(instruction_stream) as u16
+    }
+}
+
+type Opcode6BitData = (bool, bool, u8, u8, u8, u8, u8);
+// TODO rename this as it's used for more than just 6-bit opcodes (at least once for 7-bit)
+fn get_6bit_opcode_instruction_data(instruction_stream: &mut BufReader<File>, opcode_byte: u8) -> Opcode6BitData {
+    let operands = read_byte(instruction_stream);
+    let flag_1 = (opcode_byte & 0b10) >> 1 == 1;
+    let flag_2 = opcode_byte & 0b01 == 1;
+    let mode = operands >> 6;
+    let reg_or_subopcode = (operands & 0b111000) >> 3;
+    let reg_or_mem = operands & 0b111;
+    let (disp_lo, disp_hi) = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
+
+    (flag_1, flag_2, mode, reg_or_subopcode, reg_or_mem, disp_lo, disp_hi)
+}
+
 fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instruction> {
     let byte = read_byte(instruction_stream);
 
@@ -344,43 +531,54 @@ fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instru
     if opcode == 0b1011 {
         let wide = (byte >> 3) & 0b1 == 1;
         let reg = byte & 0b111;
-        let data = if wide {
-            read_word(instruction_stream)
-        } else {
-            read_byte(instruction_stream) as u16
-        };
+        let data = read_data(instruction_stream, wide);
 
         return Some(Instruction::Mov_Imm_To_Reg { wide, reg, data })
     }
 
     let opcode = byte >> 2;
-    if opcode == 0b100010 {
-        let operands = read_byte(instruction_stream);
+    match opcode {
+        0b100010 => {
+            let (dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            return Some(Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+        },
 
-        let dest = (byte & 0b10) >> 1 == 1;
-        let wide = byte & 0b01 == 1;
-        let mode = operands >> 6;
-        let reg = (operands & 0b111000) >> 3;
-        let reg_or_mem = operands & 0b111;
-        let (disp_lo, disp_hi) = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
+        0b000000 => {
+            let (dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            return Some(Instruction::Add_RegMem_With_Reg_to_Either { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+        },
 
-        return Some(Instruction::Mov_RegMem_ToFrom_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+        0b001010 => {
+            let (dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            return Some(Instruction::Sub_RegMem_And_Reg_To_Either { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+        },
+
+        0b01110 => {
+            let (dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            return Some(Instruction::Cmp_RegMem_And_Reg { dest, wide, mode, reg, reg_or_mem, disp_lo, disp_hi });
+        },
+
+        0b100000 => {
+            let (sign_extend, wide, mode, sub_opcode, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            // let data = read_data(instruction_stream, wide); 
+            let data = if !sign_extend && wide { read_word(instruction_stream) } else { read_byte(instruction_stream) as u16 };
+
+            return match sub_opcode {
+                0b000 => Some(Instruction::Add_Imm_to_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data }),
+                0b101 => Some(Instruction::Sub_Imm_From_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data }),
+                0b111 => Some(Instruction::Cmp_Imm_With_RegMem { sign_extend, wide, mode, reg_or_mem, disp_lo, disp_hi, data }),
+                _ => None,
+            };
+        },
+
+        _ => {},
     }
 
     let opcode = byte >> 1;
     match opcode {
         0b1100011 => {
-            let operands = read_byte(instruction_stream);
-
-            let wide = byte & 0b1 == 1;
-            let mode = operands >> 6;
-            let reg_or_mem = operands & 0b111;
-            let (disp_lo, disp_hi) = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
-            let data = if wide {
-                read_word(instruction_stream)
-            } else {
-                read_byte(instruction_stream) as u16
-            };
+            let (_, wide, mode, _, reg_or_mem, disp_lo, disp_hi) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            let data = read_data(instruction_stream, wide);
 
             return Some(Instruction::Mov_Imm_To_RegMem { wide, mode, reg_or_mem, data, disp_lo, disp_hi });
         },
@@ -398,6 +596,28 @@ fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instru
             
             return Some(Instruction::Mov_Acc_To_Mem { wide, address });
         },
+
+        0b0000010 => {
+            let wide = byte & 0b1 == 1;
+            let data = read_data(instruction_stream, wide);
+
+            return Some(Instruction::Add_Imm_To_Acc { wide, data });
+        },
+
+        0b10110 => {
+            let wide = byte & 0b1 == 1;
+            let data = read_data(instruction_stream, wide);
+
+            return Some(Instruction::Sub_Imm_From_Acc { wide, data });
+        },
+
+        0b011110 => {
+            let wide = byte & 0b1 == 1;
+            let data = read_data(instruction_stream, wide);
+
+            return Some(Instruction::Cmp_Imm_With_Acc { wide, data });
+        },
+
         _ => {}
     };
 

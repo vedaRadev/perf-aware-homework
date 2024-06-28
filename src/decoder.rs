@@ -4,24 +4,15 @@ use std::{
     io::{ prelude::*, BufReader },
 };
 
-const REG_NAME_AX: &str = "ax"; const REG_NAME_AL: &str = "al"; const REG_NAME_AH: &str = "ah";
-const REG_NAME_CX: &str = "cx"; const REG_NAME_CL: &str = "cl"; const REG_NAME_CH: &str = "ch";
-const REG_NAME_DX: &str = "dx"; const REG_NAME_DL: &str = "dl"; const REG_NAME_DH: &str = "dh";
-const REG_NAME_BX: &str = "bx"; const REG_NAME_BL: &str = "bl"; const REG_NAME_BH: &str = "bh";
-const REG_NAME_SP: &str = "sp";
-const REG_NAME_BP: &str = "bp";
-const REG_NAME_SI: &str = "si";
-const REG_NAME_DI: &str = "di";
-
 const REGISTER_NAMES: [[&str; 2]; 8] = [
-    [REG_NAME_AL, REG_NAME_AX],
-    [REG_NAME_CL, REG_NAME_CX],
-    [REG_NAME_DL, REG_NAME_DX],
-    [REG_NAME_BL, REG_NAME_BX],
-    [REG_NAME_AH, REG_NAME_SP],
-    [REG_NAME_CH, REG_NAME_BP],
-    [REG_NAME_DH, REG_NAME_SI],
-    [REG_NAME_BH, REG_NAME_DI],
+    ["al", "ax"],
+    ["cl", "cx"],
+    ["dl", "dx"],
+    ["bl", "bx"],
+    ["ah", "sp"],
+    ["ch", "bp"],
+    ["dh", "si"],
+    ["bh", "di"],
 ];
 
 pub fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
@@ -41,16 +32,6 @@ impl RegisterAccess {
         }
     }
 }
-
-// impl fmt::Display for RegisterAccess {
-//     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//         match self {
-//             RegisterAccess::Low(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
-//             RegisterAccess::High(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
-//             RegisterAccess::Full(encoding) => write!(formatter, "{}", get_register_name(*encoding, true).unwrap()),
-//         }
-//     }
-// }
 
 #[allow(non_camel_case_types)]
 pub enum EffectiveAddressBase {
@@ -279,8 +260,6 @@ impl fmt::Display for Instruction {
             [ None, None ] => todo!("printing for 0-operand instructions not implemented"),
             [ Some(operand), None ] => write!(formatter, "{} {}", op_name, operand),
             [ Some(dst @ Operand::Memory(_)), Some(src @ Operand::ImmediateData(data)) ] => {
-                // let [ lo, hi ] = data.to_ne_bytes();
-                // let size_specifier = if hi == 0 { "byte" } else { "word" };
                 let size_specifier = if self.has_flag(OperationFlag::Wide) { "word" } else { "byte" };
                 write!(formatter, "{} {}, {} {}", op_name, dst, size_specifier, src)
             },

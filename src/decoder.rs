@@ -28,39 +28,29 @@ pub fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
     if reg > 7 { None } else { Some(REGISTER_NAMES[reg as usize][wide as usize]) }
 }
 
-// AUDIT Do I really want to store the encoded register in here?
-// Maybe I could create an enum named Reg with values:
-// A, B, C, D, SP, BP, SI, DI
-// Then the RegisterAccess could store the Register itself.
-// Or I could do vice versa where the Register stores the RegisterAccess, then I could code in some
-// invariants to say that SP, BP, SI, DI can only ever be full access.
-pub enum RegisterAccess {
-    Low(u8),
-    High(u8),
-    Full(u8),
-}
+pub enum RegisterAccess { Low, High, Full, }
 
 impl RegisterAccess {
     fn new(encoded_register: u8, wide: bool) -> Self {
         if wide {
-            RegisterAccess::Full(encoded_register)
+            RegisterAccess::Full
         } else if (encoded_register & 0b100) >> 2 == 1 {
-            RegisterAccess::High(encoded_register)
+            RegisterAccess::High
         } else {
-            RegisterAccess::Low(encoded_register)
+            RegisterAccess::Low
         }
     }
 }
 
-impl fmt::Display for RegisterAccess {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RegisterAccess::Low(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
-            RegisterAccess::High(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
-            RegisterAccess::Full(encoding) => write!(formatter, "{}", get_register_name(*encoding, true).unwrap()),
-        }
-    }
-}
+// impl fmt::Display for RegisterAccess {
+//     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//         match self {
+//             RegisterAccess::Low(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
+//             RegisterAccess::High(encoding) => write!(formatter, "{}", get_register_name(*encoding, false).unwrap()),
+//             RegisterAccess::Full(encoding) => write!(formatter, "{}", get_register_name(*encoding, true).unwrap()),
+//         }
+//     }
+// }
 
 #[allow(non_camel_case_types)]
 pub enum EffectiveAddressBase {
@@ -142,8 +132,14 @@ impl fmt::Display for EffectiveAddress {
     }
 }
 
+// AUDIT Do I really want to store the encoded register in here?
+// Maybe I could create an enum named Reg with values:
+// A, B, C, D, SP, BP, SI, DI
+// Then the RegisterOperand could store the Register itself.
+// Or I could do vice versa where the Register stores the RegisterAccess, then I could code in some
+// invariants to say that SP, BP, SI, DI can only ever be full access.
 pub enum Operand {
-    Register(RegisterAccess),
+    Register(u8, RegisterAccess),
     Memory(EffectiveAddress),
     ImmediateData(u16),
     LabelOffset(i8), // instruction pointer increment
@@ -152,7 +148,11 @@ pub enum Operand {
 impl fmt::Display for Operand {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Operand::Register(register_access) => write!(formatter, "{}", register_access),
+            Operand::Register(encoding, register_access) => write!(formatter, "{}", match register_access {
+                RegisterAccess::Full => get_register_name(*encoding, true).unwrap(),
+                RegisterAccess::High => get_register_name(*encoding, false).unwrap(),
+                RegisterAccess::Low => get_register_name(*encoding, false).unwrap(),
+            }),
             Operand::Memory(effective_address) => write!(formatter, "{}", effective_address),
             Operand::ImmediateData(data) => write!(formatter, "{}", data),
             Operand::LabelOffset(offset) => write!(formatter, "{}", offset),
@@ -161,6 +161,7 @@ impl fmt::Display for Operand {
 }
 
 // AUDIT Can I get rid of some of these flags? Are some only useful during decoding?
+#[allow(dead_code)]
 #[derive(PartialEq)]
 pub enum OperationFlag {
     SignExtension, // S
@@ -346,7 +347,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
         let mut flags: Vec<OperationFlag> = vec![];
         if wide { flags.push(OperationFlag::Wide); }
 
-        let dest_operand = Operand::Register(RegisterAccess::new(reg, wide));
+        let dest_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
         let src_operand = Operand::ImmediateData(data);
 
         return Some(Instruction {
@@ -364,9 +365,9 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
             if dest { flags.push(OperationFlag::Destination); }
 
-            let register_operand = Operand::Register(RegisterAccess::new(reg, wide));
+            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let other_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -390,9 +391,9 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
             if dest { flags.push(OperationFlag::Destination); }
 
-            let register_operand = Operand::Register(RegisterAccess::new(reg, wide));
+            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let other_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -416,9 +417,9 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
             if dest { flags.push(OperationFlag::Destination); }
 
-            let register_operand = Operand::Register(RegisterAccess::new(reg, wide));
+            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let other_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -442,9 +443,9 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
             if dest { flags.push(OperationFlag::Destination); }
 
-            let register_operand = Operand::Register(RegisterAccess::new(reg, wide));
+            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let other_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -471,7 +472,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
 
             let dest_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -499,7 +500,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
             let dest_operand = if mode == 0b11 {
-                Operand::Register(RegisterAccess::new(reg_or_mem, wide))
+                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
             } else {
                 Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
             };
@@ -519,7 +520,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(RegisterAccess::new(0b000 /* register A */, wide));
+            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
             let src_operand = Operand::Memory(EffectiveAddress::Direct(address));
 
             return Some(Instruction {
@@ -537,7 +538,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             if wide { flags.push(OperationFlag::Wide); }
 
             let dest_operand = Operand::Memory(EffectiveAddress::Direct(address));
-            let src_operand = Operand::Register(RegisterAccess::new(0b000 /* register A */, wide));
+            let src_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
 
             return Some(Instruction {
                 operation: Operation::Mov_Acc_To_Mem,
@@ -553,7 +554,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(RegisterAccess::new(0b000 /* register A */, wide));
+            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
             let src_operand = Operand::ImmediateData(data);
             let operands = [ Some(dest_operand), Some(src_operand) ];
 
@@ -567,7 +568,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(RegisterAccess::new(0b000 /* register A */, wide));
+            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
             let src_operand = Operand::ImmediateData(data);
             let operands = [ Some(dest_operand), Some(src_operand) ];
 
@@ -581,7 +582,7 @@ pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<In
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(RegisterAccess::new(0b000 /* register A */, wide));
+            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
             let src_operand = Operand::ImmediateData(data);
             let operands = [ Some(dest_operand), Some(src_operand) ];
 

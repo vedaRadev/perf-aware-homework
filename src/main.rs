@@ -38,10 +38,10 @@ fn main() {
             match &instruction.operands {
                 [ Some(destination), Some(source) ] => {
                     let source_value = match source {
-                        Operand::Register(access) => match access {
-                            RegisterAccess::Low(encoding) => registers[*encoding as usize].to_ne_bytes()[1] as u16,
-                            RegisterAccess::High(encoding) => registers[*encoding as usize].to_ne_bytes()[0] as u16,
-                            RegisterAccess::Full(encoding) => registers[*encoding as usize],
+                        Operand::Register(encoding, access) => match access {
+                            RegisterAccess::Low => registers[*encoding as usize].to_ne_bytes()[1] as u16,
+                            RegisterAccess::High => registers[*encoding as usize].to_ne_bytes()[0] as u16,
+                            RegisterAccess::Full => registers[*encoding as usize],
                         },
 
                         Operand::ImmediateData(data) => *data,
@@ -60,22 +60,17 @@ fn main() {
                         | Operation::Mov_Mem_To_Acc
                         | Operation::Mov_Acc_To_Mem => {
                             match destination {
-                                Operand::Register(access) => match access {
-                                    RegisterAccess::Low(encoding) =>  {
-                                        destination_value_before = registers[*encoding as usize];
-                                        set_low_byte(&mut registers[*encoding as usize], source_value as u8);
-                                        destination_value_after = registers[*encoding as usize];
-                                    }
-                                    RegisterAccess::High(encoding) => {
-                                        destination_value_before = registers[*encoding as usize];
-                                        set_high_byte(&mut registers[*encoding as usize], source_value as u8);
-                                        destination_value_after = registers[*encoding as usize];
-                                    },
-                                    RegisterAccess::Full(encoding) => {
-                                        destination_value_before = registers[*encoding as usize];
-                                        registers[*encoding as usize] = source_value;
-                                        destination_value_after = registers[*encoding as usize];
-                                    },
+                                Operand::Register(encoding, access) => {
+                                    let register_index = *encoding as usize;
+                                    let dst = &mut registers[register_index];
+
+                                    destination_value_before = *dst;
+                                    match access {
+                                        RegisterAccess::Full => *dst = source_value,
+                                        RegisterAccess::High => set_high_byte(dst, source_value as u8),
+                                        RegisterAccess::Low => set_low_byte(dst, source_value as u8),
+                                    };
+                                    destination_value_after = *dst;
                                 },
 
                                 Operand::Memory(_) => todo!(),

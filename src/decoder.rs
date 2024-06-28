@@ -38,34 +38,19 @@ const OP_NAME_LOOPZ: &str = "loopz";
 const OP_NAME_LOOPNZ: &str = "loopnz";
 const OP_NAME_JCXZ: &str = "jcxz";
 
-fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
-    match reg {
-        0 if wide => Some(REG_NAME_AX),
-        0 if !wide => Some(REG_NAME_AL),
+const REGISTER_NAMES: [[&str; 2]; 8] = [
+    [REG_NAME_AL, REG_NAME_AX],
+    [REG_NAME_CL, REG_NAME_CX],
+    [REG_NAME_DL, REG_NAME_DX],
+    [REG_NAME_BL, REG_NAME_BX],
+    [REG_NAME_AH, REG_NAME_SP],
+    [REG_NAME_CH, REG_NAME_BP],
+    [REG_NAME_DH, REG_NAME_SI],
+    [REG_NAME_BH, REG_NAME_DI],
+];
 
-        1 if wide => Some(REG_NAME_CX),
-        1 if !wide => Some(REG_NAME_CL),
-
-        2 if wide => Some(REG_NAME_DX),
-        2 if !wide => Some(REG_NAME_DL),
-
-        3 if wide => Some(REG_NAME_BX),
-        3 if !wide => Some(REG_NAME_BL),
-
-        4 if wide => Some(REG_NAME_SP),
-        4 if !wide => Some(REG_NAME_AH),
-        
-        5 if wide => Some(REG_NAME_BP),
-        5 if !wide => Some(REG_NAME_CH),
-
-        6 if wide => Some(REG_NAME_SI),
-        6 if !wide => Some(REG_NAME_DH),
-
-        7 if wide => Some(REG_NAME_DI),
-        7 if !wide => Some(REG_NAME_BH),
-
-        _ => None
-    }
+pub fn get_register_name(reg: u8, wide: bool) -> Option<&'static str> {
+    if reg > 7 { None } else { Some(REGISTER_NAMES[reg as usize][wide as usize]) }
 }
 
 fn get_memory_expression(mode: u8, reg_or_mem: u8, disp_lo: u8, disp_hi: u8) -> Option<String> {

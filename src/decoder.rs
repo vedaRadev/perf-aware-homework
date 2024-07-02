@@ -1,7 +1,4 @@
-use std::{
-    fmt,
-    io::{ prelude::*, Cursor },
-};
+use std::fmt;
 
 const REGISTER_NAMES: [[&str; 2]; 8] = [
     ["al", "ax"],
@@ -125,6 +122,18 @@ pub enum Operand {
     LabelOffset(i8), // instruction pointer increment
 }
 
+impl Operand {
+    fn register_or_memory(mode: u8, reg_or_mem: u8, displacement: u16, wide: bool) -> Self {
+        if mode == 0b11 {
+            Self::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
+        } else {
+            Self::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
+        }
+    }
+
+    fn register_acc(wide: bool) -> Self { Self::Register(0b000, RegisterAccess::new(0b000, wide)) }
+}
+
 impl fmt::Display for Operand {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -152,6 +161,7 @@ pub enum OperationFlag {
 }
 
 #[allow(non_camel_case_types)]
+#[derive(PartialEq)]
 pub enum Operation {
     Mov_RegMem_ToFrom_Reg,
     Mov_Imm_To_RegMem,
@@ -159,11 +169,11 @@ pub enum Operation {
     Mov_Mem_To_Acc,
     Mov_Acc_To_Mem,
 
-    Add_RegMem_With_Reg_to_Either,
-    Add_Imm_to_RegMem,
+    Add_RegMem_With_Reg_To_Either,
+    Add_Imm_To_RegMem,
     Add_Imm_To_Acc,
 
-    Sub_RegMem_And_Reg_To_Either,
+    Sub_RegMem_And_Reg_From_Either,
     Sub_Imm_From_RegMem,
     Sub_Imm_From_Acc,
 
@@ -198,6 +208,7 @@ pub struct Instruction {
     pub operation: Operation,
     pub operands: [Option<Operand>; 2], // e.g. opcode operand_1, operand_2 (max 2 operands)
     pub flags: Vec<OperationFlag>, // really would like this to just be u8
+    pub size: u8,
 }
 
 impl Instruction {
@@ -217,12 +228,12 @@ impl fmt::Display for Instruction {
             | Operation::Mov_Acc_To_Mem
                 => "mov",
 
-            Operation::Add_RegMem_With_Reg_to_Either
-            | Operation::Add_Imm_to_RegMem
+            Operation::Add_RegMem_With_Reg_To_Either
+            | Operation::Add_Imm_To_RegMem
             | Operation::Add_Imm_To_Acc
                 => "add",
 
-            Operation::Sub_RegMem_And_Reg_To_Either
+            Operation::Sub_RegMem_And_Reg_From_Either
             | Operation::Sub_Imm_From_RegMem
             | Operation::Sub_Imm_From_Acc
                 => "sub",
@@ -258,7 +269,7 @@ impl fmt::Display for Instruction {
         match &self.operands {
             [ None, None ] => todo!("printing for 0-operand instructions not implemented"),
             [ Some(operand), None ] => write!(formatter, "{} {}", op_name, operand),
-            [ Some(dst @ Operand::Memory(_)), Some(src @ Operand::ImmediateData(data)) ] => {
+            [ Some(dst @ Operand::Memory(_)), Some(src @ Operand::ImmediateData(_)) ] => {
                 let size_specifier = if self.has_flag(OperationFlag::Wide) { "word" } else { "byte" };
                 write!(formatter, "{} {}, {} {}", op_name, dst, size_specifier, src)
             },
@@ -268,330 +279,273 @@ impl fmt::Display for Instruction {
     }
 }
 
-fn read_byte(instruction_stream: &mut Cursor<Vec<u8>>) -> u8 {
-    let mut byte = [0u8; 1];
-    instruction_stream.read_exact(&mut byte).expect("Failed to read byte from instruction stream");
-    unsafe { std::mem::transmute::<[u8; 1], u8>(byte) }
+fn read_word(bytes: &[u8], at: usize) -> u16 {
+    let lo = bytes[at];
+    let hi = bytes[at + 1];
+    (hi as u16) << 8 | lo as u16
 }
 
-fn read_word(instruction_stream: &mut Cursor<Vec<u8>>) -> u16 {
-    let mut word = [0u8; 2];
-    instruction_stream.read_exact(&mut word).expect("Failed to read word from instruction stream");
-    unsafe { std::mem::transmute::<[u8; 2], u16>(word) }
-}
-
-fn read_displacement_bytes(instruction_stream: &mut Cursor<Vec<u8>>, mode: u8, reg_or_mem: u8) -> u16 {
-    match mode {
-        0b00 if reg_or_mem == 0b110 => read_word(instruction_stream),
-        0b10 => read_word(instruction_stream),
-        0b01 => read_byte(instruction_stream) as u16,
-        _ => 0
-    }
-}
-
-#[inline(always)]
-fn read_data(instruction_stream: &mut Cursor<Vec<u8>>, wide: bool) -> u16 {
-    if wide {
-        read_word(instruction_stream)
+fn read_displacement(instruction_stream: &[u8], displacement_index: usize, mode: u8, reg_or_mem: u8) -> (u16, u8) {
+    if mode == 0b10 || mode == 0b00 && reg_or_mem == 0b110 {
+        (read_word(instruction_stream, displacement_index), 2)
+    } else if mode == 0b01 {
+        (instruction_stream[displacement_index] as u16, 1)
     } else {
-        read_byte(instruction_stream) as u16
+        (0, 0)
     }
 }
 
-type Opcode6BitData = (bool, bool, u8, u8, u8, u16);
-// TODO rename this as it's used for more than just 6-bit opcodes (at least once for 7-bit)
-fn get_6bit_opcode_instruction_data(instruction_stream: &mut Cursor<Vec<u8>>, opcode_byte: u8) -> Opcode6BitData {
-    let operands = read_byte(instruction_stream);
-    let flag_1 = (opcode_byte & 0b10) >> 1 == 1;
-    let flag_2 = opcode_byte & 0b01 == 1;
-    let mode = operands >> 6;
-    let reg_or_subopcode = (operands & 0b111000) >> 3;
-    let reg_or_mem = operands & 0b111;
-    let displacement = read_displacement_bytes(instruction_stream, mode, reg_or_mem);
-
-    (flag_1, flag_2, mode, reg_or_subopcode, reg_or_mem, displacement)
+fn read_data(instruction_stream: &[u8], data_index: usize, is_word: bool) -> (u16, u8) {
+    if is_word {
+        (read_word(instruction_stream, data_index), 2)
+    } else {
+        (instruction_stream[data_index] as u16, 1)
+    }
 }
 
-// TODO change the way we're decoding so that we can stop duplicating so much code
-pub fn decode_instruction(instruction_stream: &mut Cursor<Vec<u8>>) -> Option<Instruction> {
-    let byte = read_byte(instruction_stream);
+pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize) -> Option<Instruction> {
+    let maybe_opcode = instruction_stream[instruction_pointer];
+    let operation: Option<Operation> = match maybe_opcode >> 4 {
+        0b1011 => Some(Operation::Mov_Imm_To_Reg),
+        _ => match maybe_opcode >> 2 {
+            0b100010 => Some(Operation::Mov_RegMem_ToFrom_Reg),
+            0b000000 => Some(Operation::Add_RegMem_With_Reg_To_Either),
+            0b001010 => Some(Operation::Sub_RegMem_And_Reg_From_Either),
+            0b001110 => Some(Operation::Cmp_RegMem_And_Reg),
+            0b100000 => match (instruction_stream[instruction_pointer + 1] & 0b111000) >> 3 {
+                0b000 => Some(Operation::Add_Imm_To_RegMem),
+                0b101 => Some(Operation::Sub_Imm_From_RegMem),
+                0b111 => Some(Operation::Cmp_Imm_With_RegMem),
+                _ => None
+            },
+            _ => match maybe_opcode >> 1 {
+                0b1100011 => Some(Operation::Mov_Imm_To_RegMem),
+                0b1010000 => Some(Operation::Mov_Mem_To_Acc),
+                0b1010001 => Some(Operation::Mov_Acc_To_Mem),
+                0b0000010 => Some(Operation::Add_Imm_To_Acc),
+                0b0010110 => Some(Operation::Sub_Imm_From_Acc),
+                0b0011110 => Some(Operation::Cmp_Imm_With_Acc),
+                _ => match maybe_opcode {
+                    0b01110100 => Some(Operation::Jmp_On_Equal),
+                    0b01111100 => Some(Operation::Jmp_On_Less),
+                    0b01111110 => Some(Operation::Jmp_On_Less_Or_Equal),
+                    0b01110010 => Some(Operation::Jmp_On_Below),
+                    0b01110110 => Some(Operation::Jmp_On_Below_Or_Equal),
+                    0b01111111 => Some(Operation::Jmp_On_Greater),
+                    0b01110111 => Some(Operation::Jmp_On_Above),
+                    0b01111010 => Some(Operation::Jmp_On_Parity),
+                    0b01110000 => Some(Operation::Jmp_On_Overflow),
+                    0b01111000 => Some(Operation::Jmp_On_Sign),
+                    0b01110101 => Some(Operation::Jmp_On_Not_Equal),
+                    0b01111101 => Some(Operation::Jmp_On_Not_Less),
+                    0b01110011 => Some(Operation::Jmp_On_Not_Below),
+                    0b01111011 => Some(Operation::Jmp_On_Not_Parity),
+                    0b01110001 => Some(Operation::Jmp_On_Not_Overflow),
+                    0b01111001 => Some(Operation::Jmp_On_Not_Sign),
+                    0b11100011 => Some(Operation::Jmp_On_CX_Zero),
+                    0b11100010 => Some(Operation::Loop),
+                    0b11100001 => Some(Operation::Loop_While_Zero),
+                    0b11100000 => Some(Operation::Loop_While_Not_Zero),
+                    _ => None
+                }
+            }
+        }
+    };
 
-    let opcode = byte >> 4;
-    if opcode == 0b1011 {
-        let wide = (byte >> 3) & 0b1 == 1;
-        let reg = byte & 0b111;
-        let data = read_data(instruction_stream, wide);
+    #[allow(clippy::question_mark)]
+    if operation.is_none() { return None; }
+    let operation = operation.unwrap();
 
-        let mut flags: Vec<OperationFlag> = vec![];
-        if wide { flags.push(OperationFlag::Wide); }
+    match operation {
+        Operation::Mov_Imm_To_Reg => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 1;
 
-        let dest_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
-        let src_operand = Operand::ImmediateData(data);
+            let params = instruction_stream[instruction_pointer];
 
-        return Some(Instruction {
-            operation: Operation::Mov_Imm_To_Reg,
-            operands: [ Some(dest_operand), Some(src_operand) ],
-            flags,
-        });
-    }
+            let wide = (params >> 3) & 1 == 1;
+            let reg = params & 0b111;
+            let (data, data_length) = read_data(instruction_stream, instruction_pointer + 1, wide);
 
-    let opcode = byte >> 2;
-    match opcode {
-        0b100010 => {
-            let (dest, wide, mode, reg, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
+            let destination_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
+            let source_operand = Operand::ImmediateData(data);
+            let operands = [ Some(destination_operand), Some(source_operand) ];
+            let mut flags: Vec<OperationFlag> = vec![];
+            if wide { flags.push(OperationFlag::Wide); }
+
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + data_length })
+        },
+
+        Operation::Mov_RegMem_ToFrom_Reg
+        | Operation::Add_RegMem_With_Reg_To_Either
+        | Operation::Sub_RegMem_And_Reg_From_Either
+        | Operation::Cmp_RegMem_And_Reg
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 2;
+
+            let params = instruction_stream[instruction_pointer];
+            let operands = instruction_stream[instruction_pointer + 1];
+
+            let dest = params & 0b10 > 0;
+            let wide = params & 1 == 1;
+            let mode = operands >> 6;
+            let reg = (operands & 0b111000) >> 3;
+            let reg_or_mem = operands & 0b111;
+            let (displacement, displacement_length) = read_displacement(
+                instruction_stream,
+                instruction_pointer + 2,
+                mode,
+                reg_or_mem
+            );
+
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
             if dest { flags.push(OperationFlag::Destination); }
 
-            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
-            let other_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
+            let mut destination_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
+            let mut source_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
 
-            let operands = if dest {
-                [ Some(register_operand), Some(other_operand) ]
-            } else {
-                [ Some(other_operand), Some(register_operand) ]
-            };
+            if !dest { std::mem::swap(&mut destination_operand, &mut source_operand); }
+            let operands = [ Some(destination_operand), Some(source_operand) ];
 
-            return Some(Instruction {
-                operands,
-                operation: Operation::Mov_RegMem_ToFrom_Reg,
-                flags,
-            });
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + displacement_length })
         },
 
-        0b000000 => {
-            let (dest, wide, mode, reg, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-            if dest { flags.push(OperationFlag::Destination); }
+        Operation::Add_Imm_To_RegMem
+        | Operation::Sub_Imm_From_RegMem
+        | Operation::Cmp_Imm_With_RegMem
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 2;
 
-            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
-            let other_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
+            let params = instruction_stream[instruction_pointer];
+            let operands = instruction_stream[instruction_pointer + 1];
 
-            let operands = if dest {
-                [ Some(register_operand), Some(other_operand) ]
-            } else {
-                [ Some(other_operand), Some(register_operand) ]
-            };
-
-            return Some(Instruction {
-                operation: Operation::Add_RegMem_With_Reg_to_Either,
-                operands,
-                flags,
-            });
-        },
-
-        0b001010 => {
-            let (dest, wide, mode, reg, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-            if dest { flags.push(OperationFlag::Destination); }
-
-            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
-            let other_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
-
-            let operands = if dest {
-                [ Some(register_operand), Some(other_operand) ]
-            } else {
-                [ Some(other_operand), Some(register_operand) ]
-            };
-
-            return Some(Instruction {
-                operation: Operation::Sub_RegMem_And_Reg_To_Either,
-                operands,
-                flags,
-            });
-        },
-
-        0b01110 => {
-            let (dest, wide, mode, reg, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-            if dest { flags.push(OperationFlag::Destination); }
-
-            let register_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
-            let other_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
-
-            let operands = if dest {
-                [ Some(register_operand), Some(other_operand) ]
-            } else {
-                [ Some(other_operand), Some(register_operand) ]
-            };
-
-            return Some(Instruction {
-                operation: Operation::Cmp_RegMem_And_Reg,
-                operands,
-                flags,
-            });
-        },
-
-        0b100000 => {
-            let (sign_extend, wide, mode, sub_opcode, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
-            let data = if !sign_extend && wide { read_word(instruction_stream) } else { read_byte(instruction_stream) as u16 };
+            let sign_extend = params & 0b10 > 0;
+            let wide = params & 1 == 1;
+            let mode = operands >> 6;
+            let reg_or_mem = operands & 0b111;
+            let (displacement, displacement_length) = read_displacement(
+                instruction_stream,
+                instruction_pointer + 2,
+                mode,
+                reg_or_mem
+            );
+            let (data, data_length) = read_data(
+                instruction_stream,
+                instruction_pointer + 2 + displacement_length as usize,
+                !sign_extend && wide
+            );
 
             let mut flags: Vec<OperationFlag> = vec![];
             if sign_extend { flags.push(OperationFlag::SignExtension); }
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
-            let src_operand = Operand::ImmediateData(data);
+            let destination_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
+            let source_operand = Operand::ImmediateData(data);
+            let operands = [ Some(destination_operand), Some(source_operand) ];
 
-            let operands = [ Some(dest_operand), Some(src_operand) ];
-
-            return match sub_opcode {
-                0b000 => Some(Instruction { operation: Operation::Add_Imm_to_RegMem, operands, flags }),
-                0b101 => Some(Instruction { operation: Operation::Sub_Imm_From_RegMem, operands, flags }),
-                0b111 => Some(Instruction { operation: Operation::Cmp_Imm_With_RegMem, operands, flags }),
-                _ => None,
-            };
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + displacement_length + data_length })
         },
 
-        _ => {},
-    }
+        Operation::Mov_Imm_To_RegMem => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 2;
 
-    let opcode = byte >> 1;
-    match opcode {
-        0b1100011 => {
-            // HACK for simplicity, calculating 6bit opcode stuff here even though we're a 7bit
-            // opcode
-            let (_, wide, mode, _, reg_or_mem, displacement) = get_6bit_opcode_instruction_data(instruction_stream, byte);
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-            let dest_operand = if mode == 0b11 {
-                Operand::Register(reg_or_mem, RegisterAccess::new(reg_or_mem, wide))
-            } else {
-                Operand::Memory(EffectiveAddress::new(mode, reg_or_mem, displacement))
-            };
-            let src_operand = Operand::ImmediateData(read_data(instruction_stream, wide));
+            let params = instruction_stream[instruction_pointer];
+            let operands = instruction_stream[instruction_pointer + 1];
 
-            return Some(Instruction {
-                operation: Operation::Mov_Imm_To_RegMem,
-                operands: [ Some(dest_operand), Some(src_operand) ],
-                flags
-            });
-        },
-
-        0b1010000 => {
-            let wide = byte & 0b1 == 1;
-            let address = read_word(instruction_stream);
+            let wide = params & 1 == 1;
+            let mode = operands >> 6;
+            let reg_or_mem = operands & 0b111;
+            let (displacement, displacement_length) = read_displacement(
+                instruction_stream,
+                instruction_pointer + 2,
+                mode,
+                reg_or_mem
+            );
+            let (data, data_length) = read_data(
+                instruction_stream,
+                instruction_pointer + 2 + displacement_length as usize,
+                wide
+            );
 
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
-            let src_operand = Operand::Memory(EffectiveAddress::Direct(address));
+            let destination_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
+            let source_operand = Operand::ImmediateData(data);
+            let operands = [ Some(destination_operand), Some(source_operand) ];
 
-            return Some(Instruction {
-                operation: Operation::Mov_Mem_To_Acc,
-                operands: [ Some(dest_operand), Some(src_operand) ],
-                flags,
-            });
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + displacement_length + data_length })
         },
 
-        0b1010001 => {
-            let wide = byte & 0b1 == 1;
-            let address = read_word(instruction_stream);
+        Operation::Mov_Mem_To_Acc
+        | Operation::Mov_Acc_To_Mem
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 3;
+
+            let params = instruction_stream[instruction_pointer];
+            let wide = params & 1 == 1;
+            let address = read_word(instruction_stream, instruction_pointer + 1);
+
+            // assuming mem -> acc
+            let mut destination_operand = Operand::register_acc(wide);
+            let mut source_operand = Operand::Memory(EffectiveAddress::Direct(address));
+            // swap destination and source if acc -> mem
+            if operation == Operation::Mov_Acc_To_Mem { std::mem::swap(&mut destination_operand, &mut source_operand); }
+            let operands = [ Some(destination_operand), Some(source_operand) ];
 
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Memory(EffectiveAddress::Direct(address));
-            let src_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
-
-            return Some(Instruction {
-                operation: Operation::Mov_Acc_To_Mem,
-                operands: [ Some(dest_operand), Some(src_operand) ],
-                flags,
-            });
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
         },
 
-        0b0000010 => {
-            let wide = byte & 0b1 == 1;
-            let data = read_data(instruction_stream, wide);
+        Operation::Add_Imm_To_Acc
+        | Operation::Sub_Imm_From_Acc
+        | Operation::Cmp_Imm_With_Acc
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 1;
+
+            let params = instruction_stream[instruction_pointer];
+            let wide = params & 1 == 1;
+            let (data, data_length) = read_data(instruction_stream, instruction_pointer + 1, wide);
+
+            let destination_operand = Operand::register_acc(wide);
+            let source_operand = Operand::ImmediateData(data);
+            let operands = [ Some(destination_operand), Some(source_operand) ];
 
             let mut flags: Vec<OperationFlag> = vec![];
             if wide { flags.push(OperationFlag::Wide); }
 
-            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
-            let src_operand = Operand::ImmediateData(data);
-            let operands = [ Some(dest_operand), Some(src_operand) ];
-
-            return Some(Instruction { operation: Operation::Add_Imm_To_Acc, operands, flags });
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + data_length })
         },
 
-        0b10110 => {
-            let wide = byte & 0b1 == 1;
-            let data = read_data(instruction_stream, wide);
+        Operation::Jmp_On_Equal
+        | Operation::Jmp_On_Less
+        | Operation::Jmp_On_Less_Or_Equal
+        | Operation::Jmp_On_Below
+        | Operation::Jmp_On_Below_Or_Equal
+        | Operation::Jmp_On_Greater
+        | Operation::Jmp_On_Above
+        | Operation::Jmp_On_Parity
+        | Operation::Jmp_On_Overflow
+        | Operation::Jmp_On_Sign
+        | Operation::Jmp_On_Not_Equal
+        | Operation::Jmp_On_Not_Less
+        | Operation::Jmp_On_Not_Below
+        | Operation::Jmp_On_Not_Parity
+        | Operation::Jmp_On_Not_Overflow
+        | Operation::Jmp_On_Not_Sign
+        | Operation::Jmp_On_CX_Zero
+        | Operation::Loop
+        | Operation::Loop_While_Zero
+        | Operation::Loop_While_Not_Zero
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 2;
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
+            let operands = [ Some(Operand::LabelOffset(instruction_stream[instruction_pointer + 1] as i8)), None ];
+            let flags: Vec<OperationFlag> = vec![];
 
-            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
-            let src_operand = Operand::ImmediateData(data);
-            let operands = [ Some(dest_operand), Some(src_operand) ];
-
-            return Some(Instruction { operation: Operation::Sub_Imm_From_Acc, operands, flags });
-        },
-
-        0b011110 => {
-            let wide = byte & 0b1 == 1;
-            let data = read_data(instruction_stream, wide);
-
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-
-            let dest_operand = Operand::Register(0b000, RegisterAccess::new(0b000 /* register A */, wide));
-            let src_operand = Operand::ImmediateData(data);
-            let operands = [ Some(dest_operand), Some(src_operand) ];
-
-            return Some(Instruction { operation: Operation::Cmp_Imm_With_Acc, operands, flags });
-        },
-
-        _ => {}
-    };
-
-    let opcode = byte;
-    match opcode {
-        0b01110100 => Some(Instruction { operation: Operation::Jmp_On_Equal, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111100 => Some(Instruction { operation: Operation::Jmp_On_Less, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111110 => Some(Instruction { operation: Operation::Jmp_On_Less_Or_Equal, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110010 => Some(Instruction { operation: Operation::Jmp_On_Below, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110110 => Some(Instruction { operation: Operation::Jmp_On_Below_Or_Equal, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111111 => Some(Instruction { operation: Operation::Jmp_On_Greater, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110111 => Some(Instruction { operation: Operation::Jmp_On_Above, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111010 => Some(Instruction { operation: Operation::Jmp_On_Parity, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110000 => Some(Instruction { operation: Operation::Jmp_On_Overflow, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111000 => Some(Instruction { operation: Operation::Jmp_On_Sign, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110101 => Some(Instruction { operation: Operation::Jmp_On_Not_Equal, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111101 => Some(Instruction { operation: Operation::Jmp_On_Not_Less, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110011 => Some(Instruction { operation: Operation::Jmp_On_Not_Below, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111011 => Some(Instruction { operation: Operation::Jmp_On_Not_Parity, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01110001 => Some(Instruction { operation: Operation::Jmp_On_Not_Overflow, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b01111001 => Some(Instruction { operation: Operation::Jmp_On_Not_Sign, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b11100011 => Some(Instruction { operation: Operation::Jmp_On_CX_Zero, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b11100010 => Some(Instruction { operation: Operation::Loop, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b11100001 => Some(Instruction { operation: Operation::Loop_While_Zero, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        0b11100000 => Some(Instruction { operation: Operation::Loop_While_Not_Zero, operands: [ Some(Operand::LabelOffset(read_byte(instruction_stream) as i8)), None ], flags: vec![] }),
-        _ => None
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
+        }
     }
 }

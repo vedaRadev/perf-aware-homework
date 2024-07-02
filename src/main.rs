@@ -1,7 +1,7 @@
 use std::{
     env,
     process,
-    io::{ prelude::*, Cursor },
+    io::prelude::*,
     fs::File,
 };
 
@@ -65,140 +65,144 @@ fn main() {
     }
 
     let mut file = File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
-    let mut contents: Vec<u8> = vec![];
-    file.read_to_end(&mut contents).expect("Failed to read file");
-    let mut instruction_stream = Cursor::new(contents);
+    let mut instruction_stream: Vec<u8> = vec![];
+    file.read_to_end(&mut instruction_stream).expect("Failed to read file");
 
     let mut register_set = RegisterSet::new();
     let mut flags = Flags::new();
+    let mut instruction_pointer = 0;
 
-    while !instruction_stream.fill_buf().expect("Failed to read instruction stream").is_empty() {
-        if let Some(instruction) = decode_instruction(&mut instruction_stream) {
-            match &instruction.operands {
-                [ Some(destination), Some(source) ] => {
-                    let source_value = match source {
-                        Operand::Register(encoding, access) => register_set.get_register_value(*encoding, access),
-                        Operand::ImmediateData(data) => *data,
+    println!("bits 16");
+    while instruction_pointer < instruction_stream.len() {
+        let instruction = decode_instruction(&instruction_stream, instruction_pointer);
+        if instruction.is_none() { break; }
+        let instruction = instruction.unwrap();
+        instruction_pointer += instruction.size as usize;
 
-                        Operand::Memory(_) => todo!(),
-                        Operand::LabelOffset(_) => todo!(),
-                    };
+        match &instruction.operands {
+            [ Some(destination), Some(source) ] => {
+                let source_value = match source {
+                    Operand::Register(encoding, access) => register_set.get_register_value(*encoding, access),
+                    Operand::ImmediateData(data) => *data,
 
-                    let destination_value_before;
-                    let destination_value_after;
-                    let flags_before = flags.get_active_flags_string();
-                    #[allow(clippy::needless_late_init)]
-                    let flags_after: String;
+                    Operand::Memory(_) => todo!(),
+                    Operand::LabelOffset(_) => todo!(),
+                };
 
-                    match instruction.operation {
-                        Operation::Mov_RegMem_ToFrom_Reg
-                        | Operation::Mov_Imm_To_Reg
-                        | Operation::Mov_Imm_To_RegMem
-                        | Operation::Mov_Mem_To_Acc
-                        | Operation::Mov_Acc_To_Mem => {
-                            match destination {
-                                Operand::Register(encoding, access) => {
-                                    destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
-                                    register_set.set_register_value(*encoding, access, source_value);
-                                    destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
-                                },
+                let destination_value_before;
+                let destination_value_after;
+                let flags_before = flags.get_active_flags_string();
+                #[allow(clippy::needless_late_init)]
+                let flags_after: String;
 
-                                Operand::Memory(_) => todo!(),
+                match instruction.operation {
+                    Operation::Mov_RegMem_ToFrom_Reg
+                    | Operation::Mov_Imm_To_Reg
+                    | Operation::Mov_Imm_To_RegMem
+                    | Operation::Mov_Mem_To_Acc
+                    | Operation::Mov_Acc_To_Mem => {
+                        match destination {
+                            Operand::Register(encoding, access) => {
+                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                register_set.set_register_value(*encoding, access, source_value);
+                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            },
 
-                                _ => panic!("cannot move into immediate or label offset"),
-                            };
-                        },
+                            Operand::Memory(_) => todo!(),
 
-                        Operation::Add_RegMem_With_Reg_to_Either
-                        | Operation::Add_Imm_to_RegMem
-                        | Operation::Add_Imm_To_Acc => {
-                            match destination {
-                                Operand::Register(encoding, access) => {
-                                    destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            _ => panic!("cannot move into immediate or label offset"),
+                        };
+                    },
 
-                                    register_set.set_register_value(*encoding, access, destination_value_before + source_value);
-                                    let reg_val_after = register_set.get_register_value(*encoding, access);
-                                    flags.zero = reg_val_after == 0;
-                                    flags.sign = match access {
-                                        RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                        RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
-                                        RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
-                                    };
+                    Operation::Add_RegMem_With_Reg_To_Either
+                    | Operation::Add_Imm_To_RegMem
+                    | Operation::Add_Imm_To_Acc => {
+                        match destination {
+                            Operand::Register(encoding, access) => {
+                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
 
-                                    destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
-                                },
+                                register_set.set_register_value(*encoding, access, destination_value_before + source_value);
+                                let reg_val_after = register_set.get_register_value(*encoding, access);
+                                flags.zero = reg_val_after == 0;
+                                flags.sign = match access {
+                                    RegisterAccess::Full => (reg_val_after as i16) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
+                                };
 
-                                Operand::Memory(_) => todo!(),
+                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            },
 
-                                _ => panic!("cannot add into immediate or label offset"),
-                            }
-                        },
+                            Operand::Memory(_) => todo!(),
 
-                        Operation::Sub_RegMem_And_Reg_To_Either
-                        | Operation::Sub_Imm_From_RegMem
-                        | Operation::Sub_Imm_From_Acc => {
-                            match destination {
-                                Operand::Register(encoding, access) => {
-                                    destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            _ => panic!("cannot add into immediate or label offset"),
+                        }
+                    },
 
-                                    register_set.set_register_value(*encoding, access, destination_value_before - source_value);
-                                    let reg_val_after = register_set.get_register_value(*encoding, access);
-                                    flags.zero = reg_val_after == 0;
-                                    flags.sign = match access {
-                                        RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                        RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
-                                        RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
-                                    };
+                    Operation::Sub_RegMem_And_Reg_From_Either
+                    | Operation::Sub_Imm_From_RegMem
+                    | Operation::Sub_Imm_From_Acc => {
+                        match destination {
+                            Operand::Register(encoding, access) => {
+                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
 
-                                    destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
-                                },
+                                register_set.set_register_value(*encoding, access, destination_value_before - source_value);
+                                let reg_val_after = register_set.get_register_value(*encoding, access);
+                                flags.zero = reg_val_after == 0;
+                                flags.sign = match access {
+                                    RegisterAccess::Full => (reg_val_after as i16) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
+                                };
 
-                                Operand::Memory(_) => todo!(),
+                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            },
 
-                                _ => panic!("cannot sub from immediate or label offset"),
-                            }
-                        },
+                            Operand::Memory(_) => todo!(),
 
-                        Operation::Cmp_RegMem_And_Reg
-                        | Operation::Cmp_Imm_With_RegMem
-                        | Operation::Cmp_Imm_With_Acc => {
-                            match destination {
-                                Operand::Register(encoding, access) => {
-                                    destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            _ => panic!("cannot sub from immediate or label offset"),
+                        }
+                    },
 
-                                    let test_val = destination_value_before - source_value;
-                                    flags.zero = test_val == 0;
-                                    flags.sign = match access {
-                                        RegisterAccess::Full => (test_val as i16) < 0,
-                                        RegisterAccess::Low => (test_val.to_ne_bytes()[1] as i8) < 0,
-                                        RegisterAccess::High => (test_val.to_ne_bytes()[0] as i8) < 0,
-                                    };
+                    Operation::Cmp_RegMem_And_Reg
+                    | Operation::Cmp_Imm_With_RegMem
+                    | Operation::Cmp_Imm_With_Acc => {
+                        match destination {
+                            Operand::Register(encoding, access) => {
+                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
 
-                                    destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
-                                },
+                                let test_val = destination_value_before - source_value;
+                                flags.zero = test_val == 0;
+                                flags.sign = match access {
+                                    RegisterAccess::Full => (test_val as i16) < 0,
+                                    RegisterAccess::Low => (test_val.to_ne_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (test_val.to_ne_bytes()[0] as i8) < 0,
+                                };
 
-                                Operand::Memory(_) => todo!(),
+                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                            },
 
-                                _ => panic!("cannot cmp immediate or label offset"),
-                            }
-                        },
+                            Operand::Memory(_) => todo!(),
 
-                        _ => panic!("Invalid 2-operand instruction encountered")
-                    };
+                            _ => panic!("cannot cmp immediate or label offset"),
+                        }
+                    },
 
-                    flags_after = flags.get_active_flags_string();
+                    _ => panic!("Invalid 2-operand instruction encountered")
+                };
 
-                    print!("{} ; {}: {:#x} -> {:#x}", instruction, destination, destination_value_before, destination_value_after);
-                    if flags_after.len() != flags_before.len() { print!(", flags: {} -> {}", flags_before, flags_after); }
-                    println!();
-                },
+                flags_after = flags.get_active_flags_string();
 
-                [ Some(_), None ] => todo!("1-operand instructions not implemented"),
+                print!("{} ; {}: {:#x} -> {:#x}", instruction, destination, destination_value_before, destination_value_after);
+                if flags_after.len() != flags_before.len() { print!(", flags: {} -> {}", flags_before, flags_after); }
+                println!();
+            },
 
-                [ None, None ] => todo!("0-operand instructions not implemented"),
-                _ => panic!("invalid operand configuration [ None, Some(...) ]"),
-            };
-        }
+            [ Some(_), None ] => todo!("1-operand instructions not implemented"),
+
+            [ None, None ] => todo!("0-operand instructions not implemented"),
+            _ => panic!("invalid operand configuration [ None, Some(...) ]"),
+        };
     }
 
     println!("\nFinal register states:");

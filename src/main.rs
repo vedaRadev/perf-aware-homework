@@ -72,11 +72,14 @@ fn main() {
     let mut flags = Flags::new();
     let mut instruction_pointer = 0;
 
-    println!("bits 16");
     while instruction_pointer < instruction_stream.len() {
         let instruction = decode_instruction(&instruction_stream, instruction_pointer);
         if instruction.is_none() { break; }
         let instruction = instruction.unwrap();
+        print!("{} ;", instruction);
+
+        let flags_before = flags.get_active_flags_string();
+        let instruction_pointer_before = instruction_pointer;
         instruction_pointer += instruction.size as usize;
 
         match &instruction.operands {
@@ -91,9 +94,6 @@ fn main() {
 
                 let destination_value_before;
                 let destination_value_after;
-                let flags_before = flags.get_active_flags_string();
-                #[allow(clippy::needless_late_init)]
-                let flags_after: String;
 
                 match instruction.operation {
                     Operation::Mov_RegMem_ToFrom_Reg
@@ -191,24 +191,34 @@ fn main() {
                     _ => panic!("Invalid 2-operand instruction encountered")
                 };
 
-                flags_after = flags.get_active_flags_string();
 
-                print!("{} ; {}: {:#x} -> {:#x}", instruction, destination, destination_value_before, destination_value_after);
-                if flags_after.len() != flags_before.len() { print!(", flags: {} -> {}", flags_before, flags_after); }
-                println!();
+                print!(" {}:{:#x}->{:#x}", destination, destination_value_before, destination_value_after);
             },
 
-            [ Some(_), None ] => todo!("1-operand instructions not implemented"),
+            [ Some(Operand::LabelOffset(offset)), None ] => {
+                match instruction.operation {
+                    Operation::Jmp_On_Not_Equal => if !flags.zero { instruction_pointer = ((instruction_pointer as isize) + *offset as isize) as usize },
 
+                    _ => todo!("this conditional jump not implemented")
+                };
+            },
+
+            [ Some(_), None ] => todo!("single-operand non-label-offset encountered"),
             [ None, None ] => todo!("0-operand instructions not implemented"),
             _ => panic!("invalid operand configuration [ None, Some(...) ]"),
         };
+
+        print!(" ip:{:#x}->{:#x}", instruction_pointer_before, instruction_pointer);
+        let flags_after = flags.get_active_flags_string();
+        if flags_after.len() != flags_before.len() { print!(" flags:{}->{}", flags_before, flags_after); }
+        println!();
     }
 
     println!("\nFinal register states:");
     for (register_index, value) in register_set.registers.iter().enumerate() {
-        println!("\t{}: {:#06x}", get_register_name(register_index as u8, true).expect("Invalid register"), value);
+        println!("\t{}: {:#x}", get_register_name(register_index as u8, true).expect("Invalid register"), value);
     }
     println!();
+    println!("ip: {:#x}", instruction_pointer);
     println!("flags: {}", flags.get_active_flags_string());
 }

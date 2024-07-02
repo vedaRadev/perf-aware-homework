@@ -1,7 +1,6 @@
 use std::{
     fmt,
-    fs::File,
-    io::{ prelude::*, BufReader },
+    io::{ prelude::*, Cursor },
 };
 
 const REGISTER_NAMES: [[&str; 2]; 8] = [
@@ -269,19 +268,19 @@ impl fmt::Display for Instruction {
     }
 }
 
-fn read_byte(instruction_stream: &mut BufReader<File>) -> u8 {
+fn read_byte(instruction_stream: &mut Cursor<Vec<u8>>) -> u8 {
     let mut byte = [0u8; 1];
     instruction_stream.read_exact(&mut byte).expect("Failed to read byte from instruction stream");
     unsafe { std::mem::transmute::<[u8; 1], u8>(byte) }
 }
 
-fn read_word(instruction_stream: &mut BufReader<File>) -> u16 {
+fn read_word(instruction_stream: &mut Cursor<Vec<u8>>) -> u16 {
     let mut word = [0u8; 2];
     instruction_stream.read_exact(&mut word).expect("Failed to read word from instruction stream");
     unsafe { std::mem::transmute::<[u8; 2], u16>(word) }
 }
 
-fn read_displacement_bytes(instruction_stream: &mut BufReader<File>, mode: u8, reg_or_mem: u8) -> u16 {
+fn read_displacement_bytes(instruction_stream: &mut Cursor<Vec<u8>>, mode: u8, reg_or_mem: u8) -> u16 {
     match mode {
         0b00 if reg_or_mem == 0b110 => read_word(instruction_stream),
         0b10 => read_word(instruction_stream),
@@ -291,7 +290,7 @@ fn read_displacement_bytes(instruction_stream: &mut BufReader<File>, mode: u8, r
 }
 
 #[inline(always)]
-fn read_data(instruction_stream: &mut BufReader<File>, wide: bool) -> u16 {
+fn read_data(instruction_stream: &mut Cursor<Vec<u8>>, wide: bool) -> u16 {
     if wide {
         read_word(instruction_stream)
     } else {
@@ -301,7 +300,7 @@ fn read_data(instruction_stream: &mut BufReader<File>, wide: bool) -> u16 {
 
 type Opcode6BitData = (bool, bool, u8, u8, u8, u16);
 // TODO rename this as it's used for more than just 6-bit opcodes (at least once for 7-bit)
-fn get_6bit_opcode_instruction_data(instruction_stream: &mut BufReader<File>, opcode_byte: u8) -> Opcode6BitData {
+fn get_6bit_opcode_instruction_data(instruction_stream: &mut Cursor<Vec<u8>>, opcode_byte: u8) -> Opcode6BitData {
     let operands = read_byte(instruction_stream);
     let flag_1 = (opcode_byte & 0b10) >> 1 == 1;
     let flag_2 = opcode_byte & 0b01 == 1;
@@ -314,7 +313,7 @@ fn get_6bit_opcode_instruction_data(instruction_stream: &mut BufReader<File>, op
 }
 
 // TODO change the way we're decoding so that we can stop duplicating so much code
-pub fn decode_instruction(instruction_stream: &mut BufReader<File>) -> Option<Instruction> {
+pub fn decode_instruction(instruction_stream: &mut Cursor<Vec<u8>>) -> Option<Instruction> {
     let byte = read_byte(instruction_stream);
 
     let opcode = byte >> 4;

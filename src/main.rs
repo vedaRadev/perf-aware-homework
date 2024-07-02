@@ -1,7 +1,7 @@
 use std::{
     env,
     process,
-    io::{ prelude::*, BufReader },
+    io::{ prelude::*, Cursor },
     fs::File,
 };
 
@@ -64,8 +64,10 @@ fn main() {
         process::exit(1);
     }
 
-    let file = File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
-    let mut instruction_stream = BufReader::new(file);
+    let mut file = File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
+    let mut contents: Vec<u8> = vec![];
+    file.read_to_end(&mut contents).expect("Failed to read file");
+    let mut instruction_stream = Cursor::new(contents);
 
     let mut register_set = RegisterSet::new();
     let mut flags = Flags::new();

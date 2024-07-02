@@ -149,7 +149,6 @@ impl fmt::Display for Operand {
     }
 }
 
-// AUDIT Can I get rid of some of these flags? Are some only useful during decoding?
 #[allow(dead_code)]
 #[derive(PartialEq)]
 pub enum OperationFlag {
@@ -207,7 +206,9 @@ pub enum Operation {
 pub struct Instruction {
     pub operation: Operation,
     pub operands: [Option<Operand>; 2], // e.g. opcode operand_1, operand_2 (max 2 operands)
-    pub flags: Vec<OperationFlag>, // really would like this to just be u8
+    // TODO stop using a vector for flags! Pushing items into the vector is causing unnecessary
+    // allocations.
+    pub flags: Vec<OperationFlag>,
     pub size: u8,
 }
 

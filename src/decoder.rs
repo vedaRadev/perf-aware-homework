@@ -41,6 +41,22 @@ pub enum EffectiveAddressBase {
     BX,
 }
 
+impl EffectiveAddressBase {
+    pub fn get_register_encodings(&self) -> [Option<u8>; 2] {
+        // FIXME hardcoded trash, find a better way
+        match self {
+            Self::BX_SI => [ Some(3), Some(6) ],
+            Self::BX_DI => [ Some(3), Some(7) ],
+            Self::BP_SI => [ Some(5), Some(6) ],
+            Self::BP_DI => [ Some(5), Some(7) ],
+            Self::SI => [ Some(6), None ],
+            Self::DI => [ Some(7), None ],
+            Self::BP => [ Some(5), None ],
+            Self::BX => [ Some(3), None ],
+        }
+    }
+}
+
 impl fmt::Display for EffectiveAddressBase {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -152,11 +168,11 @@ impl fmt::Display for Operand {
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct InstructionFlags {
-    sign_extend: bool,
-    wide: bool,
-    destination: bool,
-    v: bool, // false - shift/rotate count is 1, true - specified in CL reg
-    repeat_on_zero: bool,
+    pub sign_extend: bool,
+    pub wide: bool,
+    pub destination: bool,
+    pub v: bool, // false - shift/rotate count is 1, true - specified in CL reg
+    pub repeat_on_zero: bool,
 }
 
 #[allow(non_camel_case_types)]
@@ -274,7 +290,8 @@ impl fmt::Display for Instruction {
     }
 }
 
-fn read_word(bytes: &[u8], at: usize) -> u16 {
+// TODO move to utils file
+pub fn read_word(bytes: &[u8], at: usize) -> u16 {
     let lo = bytes[at];
     let hi = bytes[at + 1];
     (hi as u16) << 8 | lo as u16

@@ -42,6 +42,13 @@ impl RegisterSet {
             RegisterAccess::Low => set_low_byte(register, value as u8),
         };
     }
+
+    fn calculate_effective_address(&self, base: &EffectiveAddressBase, displacement: u16) -> u16 {
+        base.get_register_encodings()
+            .iter()
+            .filter_map(|v| *v)
+            .fold(displacement, |acc, reg| acc + self.get_register_value(reg, &RegisterAccess::Full))
+    }
 }
 
 fn set_high_byte(value: &mut u16, to: u8) {
@@ -53,7 +60,6 @@ fn set_low_byte(value: &mut u16, to: u8) {
     let ptr: *mut u16 = value;
     unsafe { *(ptr as *mut u8) = to };
 }
-
 
 // TODO:
 // Add command line option for printing disassembly (default is execute/simulate)
@@ -68,9 +74,11 @@ fn main() {
     let mut instruction_stream: Vec<u8> = vec![];
     file.read_to_end(&mut instruction_stream).expect("Failed to read file");
 
+    // TODO move flags, instruction pointer into RegisterSet
     let mut register_set = RegisterSet::new();
     let mut flags = Flags::new();
     let mut instruction_pointer = 0;
+    let mut memory = [0u8; u16::MAX as usize]; // 64k instead of 1MB since not using segment registers
 
     while instruction_pointer < instruction_stream.len() {
         let instruction = decode_instruction(&instruction_stream, instruction_pointer);
@@ -88,12 +96,27 @@ fn main() {
                     Operand::Register(encoding, access) => register_set.get_register_value(*encoding, access),
                     Operand::ImmediateData(data) => *data,
 
-                    Operand::Memory(_) => todo!(),
-                    Operand::LabelOffset(_) => todo!(),
+                    Operand::Memory(EffectiveAddress::Direct(address)) => if instruction.flags.wide {
+                        read_word(&memory, *address as usize)
+                    } else {
+                        memory[*address as usize] as u16
+                    },
+
+                    Operand::Memory(EffectiveAddress::Calculated { base, displacement }) => {
+                        let address = register_set.calculate_effective_address(base, *displacement);
+
+                        if instruction.flags.wide {
+                            read_word(&memory, address as usize)
+                        } else {
+                            memory[address as usize] as u16
+                        }
+                    },
+
+                    Operand::LabelOffset(_) => panic!("offset value cannot be a source"),
                 };
 
-                let destination_value_before;
-                let destination_value_after;
+                let mut destination_value_before: Option<u16> = None;
+                let mut destination_value_after: Option<u16> = None;
 
                 match instruction.operation {
                     Operation::Mov_RegMem_ToFrom_Reg
@@ -103,12 +126,32 @@ fn main() {
                     | Operation::Mov_Acc_To_Mem => {
                         match destination {
                             Operand::Register(encoding, access) => {
-                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_before = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                                 register_set.set_register_value(*encoding, access, source_value);
-                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                             },
 
-                            Operand::Memory(_) => todo!(),
+                            Operand::Memory(EffectiveAddress::Direct(address)) => {
+                                let address = *address as usize;
+                                let [ hi, lo ] = source_value.to_ne_bytes();
+                                if instruction.flags.wide {
+                                    memory[address] = hi;
+                                    memory[address + 1] = lo;
+                                } else {
+                                    memory[address] = lo;
+                                }
+                            },
+
+                            Operand::Memory(EffectiveAddress::Calculated { base, displacement }) => {
+                                let address = register_set.calculate_effective_address(base, *displacement) as usize;
+                                let [ hi, lo ] = source_value.to_ne_bytes();
+                                if instruction.flags.wide {
+                                    memory[address] = hi;
+                                    memory[address + 1] = lo;
+                                } else {
+                                    memory[address] = lo;
+                                }
+                            },
 
                             _ => panic!("cannot move into immediate or label offset"),
                         };
@@ -119,9 +162,10 @@ fn main() {
                     | Operation::Add_Imm_To_Acc => {
                         match destination {
                             Operand::Register(encoding, access) => {
-                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                let reg_val = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_before = Some(reg_val);
 
-                                register_set.set_register_value(*encoding, access, destination_value_before + source_value);
+                                register_set.set_register_value(*encoding, access, reg_val + source_value);
                                 let reg_val_after = register_set.get_register_value(*encoding, access);
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
@@ -130,7 +174,7 @@ fn main() {
                                     RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
                                 };
 
-                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                             },
 
                             Operand::Memory(_) => todo!(),
@@ -144,9 +188,10 @@ fn main() {
                     | Operation::Sub_Imm_From_Acc => {
                         match destination {
                             Operand::Register(encoding, access) => {
-                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                let reg_val = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_before = Some(reg_val);
 
-                                register_set.set_register_value(*encoding, access, destination_value_before - source_value);
+                                register_set.set_register_value(*encoding, access, reg_val - source_value);
                                 let reg_val_after = register_set.get_register_value(*encoding, access);
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
@@ -155,7 +200,7 @@ fn main() {
                                     RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
                                 };
 
-                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                             },
 
                             Operand::Memory(_) => todo!(),
@@ -169,9 +214,10 @@ fn main() {
                     | Operation::Cmp_Imm_With_Acc => {
                         match destination {
                             Operand::Register(encoding, access) => {
-                                destination_value_before = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                let reg_val = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_before = Some(reg_val);
 
-                                let test_val = destination_value_before - source_value;
+                                let test_val = ((reg_val as i16) - (source_value as i16)) as u16;
                                 flags.zero = test_val == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (test_val as i16) < 0,
@@ -179,7 +225,7 @@ fn main() {
                                     RegisterAccess::High => (test_val.to_ne_bytes()[0] as i8) < 0,
                                 };
 
-                                destination_value_after = register_set.get_register_value(*encoding, &RegisterAccess::Full);
+                                destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                             },
 
                             Operand::Memory(_) => todo!(),
@@ -192,7 +238,9 @@ fn main() {
                 };
 
 
-                print!(" {}:{:#x}->{:#x}", destination, destination_value_before, destination_value_after);
+                if destination_value_before.is_some() && destination_value_after.is_some() {
+                    print!(" {}:{:#x}->{:#x}", destination, destination_value_before.unwrap(), destination_value_after.unwrap());
+                }
             },
 
             [ Some(Operand::LabelOffset(offset)), None ] => {
@@ -202,7 +250,6 @@ fn main() {
                     _ => todo!("this conditional jump not implemented")
                 };
             },
-
             [ Some(_), None ] => todo!("single-operand non-label-offset encountered"),
             [ None, None ] => todo!("0-operand instructions not implemented"),
             _ => panic!("invalid operand configuration [ None, Some(...) ]"),
@@ -216,9 +263,9 @@ fn main() {
 
     println!("\nFinal register states:");
     for (register_index, value) in register_set.registers.iter().enumerate() {
-        println!("\t{}: {:#x}", get_register_name(register_index as u8, true).expect("Invalid register"), value);
+        println!("\t{}: {:#06x} ({})", get_register_name(register_index as u8, true).expect("Invalid register"), value, value);
     }
     println!();
-    println!("ip: {:#x}", instruction_pointer);
+    println!("ip: {:#x} ({})", instruction_pointer, instruction_pointer);
     println!("flags: {}", flags.get_active_flags_string());
 }

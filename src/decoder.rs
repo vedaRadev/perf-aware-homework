@@ -217,6 +217,8 @@ pub enum Operation {
     Loop, // loop
     Loop_While_Zero, // loopz
     Loop_While_Not_Zero, // loopnz
+    
+    Halt, // hlt
 }
 
 pub struct Instruction {
@@ -275,6 +277,8 @@ impl fmt::Display for Instruction {
             Operation::Loop =>  "loop",
             Operation::Loop_While_Zero =>  "loopz",
             Operation::Loop_While_Not_Zero =>  "loopnz",
+
+            Operation::Halt => "hlt",
         };
 
         match &self.operands {
@@ -358,6 +362,9 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
                     0b11100010 => Some(Operation::Loop),
                     0b11100001 => Some(Operation::Loop_While_Zero),
                     0b11100000 => Some(Operation::Loop_While_Not_Zero),
+
+                    0b11110100 => Some(Operation::Halt),
+
                     _ => None
                 }
             }
@@ -551,5 +558,14 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
 
             Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
         }
+
+        Operation::Halt
+        => {
+            const BASE_INSTRUCTION_LENGTH: u8 = 1;
+            let operands = [ None, None ];
+            let flags = InstructionFlags::default();
+
+            Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
+        },
     }
 }

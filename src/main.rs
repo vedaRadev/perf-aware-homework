@@ -2,7 +2,7 @@ use std::{
     env,
     process,
     io::prelude::*,
-    fs::File,
+    fs,
 };
 
 mod decoder;
@@ -65,12 +65,71 @@ fn set_low_byte(value: &mut u16, to: u8) {
 // Add command line option for printing disassembly (default is execute/simulate)
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        println!("Please provide an assembled 8086 instruction stream");
+    // let filenames = args.iter().skip(1).filter(|arg| !arg.starts_with('-')).collect::<Vec<_>>();
+    // if filenames.len() != 1 {
+    //     println!("Please provide exactly one assembled 8086 instruction stream");
+    //     process::exit(1);
+    // }
+
+    // let mut should_execute = false;
+    // let mut should_dump_memory = false;
+    // for arg in args.iter().skip(1) {
+    //     match arg.as_str() {
+    //         "--execute" => should_execute = true,
+    //         "--memdump" => should_dump_memory = true,
+    //         _ => {}
+    //     }
+    // }
+
+    let mut assembly_filename: Option<&str> = None;
+    let mut memdump_filename: Option<&str> = None;
+    let mut should_execute = false;
+    let mut should_dump_memory = false;
+    // we'll skip the first arg since it should just be the executable filename
+    let mut arg_index = 1;
+    // probably dumb way to parse args
+    loop {
+        if arg_index >= args.len() { break; }
+        match args[arg_index].as_str() {
+            "--execute" => {
+                should_execute = true;
+                arg_index += 1;
+            },
+
+            "--memdump" => {
+                should_dump_memory = true;
+                if args[arg_index + 1].starts_with('-') {
+                    println!("memdump arg requires a filename to dump to");
+                    process::exit(1);
+                }
+
+                memdump_filename = Some(&args[arg_index + 1]);
+
+                arg_index += 2;
+            },
+
+            _ => {
+                if assembly_filename.is_some() {
+                    println!("more than one input file specified, aborting");
+                    process::exit(1);
+                }
+
+                assembly_filename = Some(&args[arg_index]);
+
+                arg_index += 1;
+            }
+        }
+    }
+
+    let assembly_filename = assembly_filename.unwrap();
+    let memdump_filename = memdump_filename.unwrap_or("");
+
+    if should_dump_memory && !should_execute {
+        println!("Memory can only be dumped if executing a program");
         process::exit(1);
     }
 
-    let mut file = File::open(&args[1]).unwrap_or_else(|_| panic!("Failed to open file {}", args[1]));
+    let mut file = fs::File::open(assembly_filename).unwrap_or_else(|_| panic!("Failed to open file {}", assembly_filename));
     let mut instruction_stream: Vec<u8> = vec![];
     file.read_to_end(&mut instruction_stream).expect("Failed to read file");
 
@@ -79,16 +138,31 @@ fn main() {
     let mut flags = Flags::new();
     let mut instruction_pointer = 0;
     let mut memory = [0u8; u16::MAX as usize]; // 64k instead of 1MB since not using segment registers
+    memory[..instruction_stream.len()].copy_from_slice(&instruction_stream);
+    memory[instruction_stream.len()] = 0b11110100; // insert HALT at end of instructions
+    drop(instruction_stream);
 
-    while instruction_pointer < instruction_stream.len() {
-        let instruction = decode_instruction(&instruction_stream, instruction_pointer);
-        if instruction.is_none() { break; }
+    loop {
+        let instruction = decode_instruction(&memory, instruction_pointer);
+        if instruction.is_none() {
+            println!("illegal or unimplemented operation encountered, halting");
+            break;
+        }
+
         let instruction = instruction.unwrap();
+        if instruction.operation == Operation::Halt { break; }
+
+        instruction_pointer += instruction.size as usize;
+
+        if !should_execute {
+            println!("{}", instruction);
+            continue;
+        }
+
         print!("{} ;", instruction);
 
         let flags_before = flags.get_active_flags_string();
         let instruction_pointer_before = instruction_pointer;
-        instruction_pointer += instruction.size as usize;
 
         match &instruction.operands {
             [ Some(destination), Some(source) ] => {
@@ -261,11 +335,19 @@ fn main() {
         println!();
     }
 
-    println!("\nFinal register states:");
-    for (register_index, value) in register_set.registers.iter().enumerate() {
-        println!("\t{}: {:#06x} ({})", get_register_name(register_index as u8, true).expect("Invalid register"), value, value);
+    if should_execute {
+        println!("\nFinal register states:");
+        for (register_index, value) in register_set.registers.iter().enumerate() {
+            println!("\t{}: {:#06x} ({})", get_register_name(register_index as u8, true).expect("Invalid register"), value, value);
+        }
+        println!();
+        println!("ip: {:#x} ({})", instruction_pointer, instruction_pointer);
+        println!("flags: {}", flags.get_active_flags_string());
+
+        if should_dump_memory {
+            fs::write(memdump_filename, memory).expect("Failed to write memdump to file");
+            println!();
+            println!("memory dumped to {}", memdump_filename);
+        }
     }
-    println!();
-    println!("ip: {:#x} ({})", instruction_pointer, instruction_pointer);
-    println!("flags: {}", flags.get_active_flags_string());
 }

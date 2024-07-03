@@ -150,13 +150,13 @@ impl fmt::Display for Operand {
 }
 
 #[allow(dead_code)]
-#[derive(PartialEq)]
-pub enum OperationFlag {
-    SignExtension, // S
-    Wide, // W
-    Destination, // D
-    Overflow, // V
-    Zero, // Z
+#[derive(Default)]
+pub struct InstructionFlags {
+    sign_extend: bool,
+    wide: bool,
+    destination: bool,
+    v: bool, // false - shift/rotate count is 1, true - specified in CL reg
+    repeat_on_zero: bool,
 }
 
 #[allow(non_camel_case_types)]
@@ -207,15 +207,9 @@ pub struct Instruction {
     pub operation: Operation,
     pub operands: [Option<Operand>; 2], // e.g. opcode operand_1, operand_2 (max 2 operands)
     // TODO stop using a vector for flags! Pushing items into the vector is causing unnecessary
-    // allocations.
-    pub flags: Vec<OperationFlag>,
+    // allocations. It was a shitty idea to begin with anyway.
+    pub flags: InstructionFlags,
     pub size: u8,
-}
-
-impl Instruction {
-    // TODO maybe find a way to use actual bitflags
-    #[inline(always)]
-    fn has_flag(&self, flag: OperationFlag) -> bool { self.flags.contains(&flag) }
 }
 
 impl fmt::Display for Instruction {
@@ -271,7 +265,7 @@ impl fmt::Display for Instruction {
             [ None, None ] => todo!("printing for 0-operand instructions not implemented"),
             [ Some(operand), None ] => write!(formatter, "{} {}", op_name, operand),
             [ Some(dst @ Operand::Memory(_)), Some(src @ Operand::ImmediateData(_)) ] => {
-                let size_specifier = if self.has_flag(OperationFlag::Wide) { "word" } else { "byte" };
+                let size_specifier = if self.flags.wide { "word" } else { "byte" };
                 write!(formatter, "{} {}, {} {}", op_name, dst, size_specifier, src)
             },
             [ Some(dst), Some(src) ] => write!(formatter, "{} {}, {}", op_name, dst, src),
@@ -370,8 +364,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
             let destination_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let source_operand = Operand::ImmediateData(data);
             let operands = [ Some(destination_operand), Some(source_operand) ];
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
+            let flags = InstructionFlags { wide, ..Default::default() };
 
             Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + data_length })
         },
@@ -398,9 +391,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
                 reg_or_mem
             );
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
-            if dest { flags.push(OperationFlag::Destination); }
+            let flags = InstructionFlags { wide, destination: dest, ..Default::default() };
 
             let mut destination_operand = Operand::Register(reg, RegisterAccess::new(reg, wide));
             let mut source_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
@@ -436,9 +427,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
                 !sign_extend && wide
             );
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if sign_extend { flags.push(OperationFlag::SignExtension); }
-            if wide { flags.push(OperationFlag::Wide); }
+            let flags = InstructionFlags { sign_extend, wide, ..Default::default() };
 
             let destination_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
             let source_operand = Operand::ImmediateData(data);
@@ -468,8 +457,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
                 wide
             );
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
+            let flags = InstructionFlags { wide, ..Default::default() };
 
             let destination_operand = Operand::register_or_memory(mode, reg_or_mem, displacement, wide);
             let source_operand = Operand::ImmediateData(data);
@@ -494,8 +482,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
             if operation == Operation::Mov_Acc_To_Mem { std::mem::swap(&mut destination_operand, &mut source_operand); }
             let operands = [ Some(destination_operand), Some(source_operand) ];
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
+            let flags = InstructionFlags { wide, ..Default::default() };
 
             Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
         },
@@ -514,8 +501,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
             let source_operand = Operand::ImmediateData(data);
             let operands = [ Some(destination_operand), Some(source_operand) ];
 
-            let mut flags: Vec<OperationFlag> = vec![];
-            if wide { flags.push(OperationFlag::Wide); }
+            let flags = InstructionFlags { wide, ..Default::default() };
 
             Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH + data_length })
         },
@@ -544,7 +530,7 @@ pub fn decode_instruction(instruction_stream: &[u8], instruction_pointer: usize)
             const BASE_INSTRUCTION_LENGTH: u8 = 2;
 
             let operands = [ Some(Operand::LabelOffset(instruction_stream[instruction_pointer + 1] as i8)), None ];
-            let flags: Vec<OperationFlag> = vec![];
+            let flags = InstructionFlags::default();
 
             Some(Instruction { operation, operands, flags, size: BASE_INSTRUCTION_LENGTH })
         }

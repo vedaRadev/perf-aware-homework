@@ -61,25 +61,8 @@ fn set_low_byte(value: &mut u16, to: u8) {
     unsafe { *(ptr as *mut u8) = to };
 }
 
-// TODO:
-// Add command line option for printing disassembly (default is execute/simulate)
 fn main() {
     let args: Vec<String> = env::args().collect();
-    // let filenames = args.iter().skip(1).filter(|arg| !arg.starts_with('-')).collect::<Vec<_>>();
-    // if filenames.len() != 1 {
-    //     println!("Please provide exactly one assembled 8086 instruction stream");
-    //     process::exit(1);
-    // }
-
-    // let mut should_execute = false;
-    // let mut should_dump_memory = false;
-    // for arg in args.iter().skip(1) {
-    //     match arg.as_str() {
-    //         "--execute" => should_execute = true,
-    //         "--memdump" => should_dump_memory = true,
-    //         _ => {}
-    //     }
-    // }
 
     let mut assembly_filename: Option<&str> = None;
     let mut memdump_filename: Option<&str> = None;

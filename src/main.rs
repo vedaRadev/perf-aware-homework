@@ -311,6 +311,15 @@ fn main() {
             [ Some(Operand::LabelOffset(offset)), None ] => {
                 match instruction.operation {
                     Operation::Jmp_On_Not_Equal => if !flags.zero { instruction_pointer = ((instruction_pointer as isize) + *offset as isize) as usize },
+                    // TODO stop hardcoding register indices
+                    Operation::Loop => {
+                        let cx_value = register_set.get_register_value(1 /* C */, &RegisterAccess::Full);
+                        register_set.set_register_value(1 /* C */, &RegisterAccess::Full, cx_value - 1);
+                        let cx_value = register_set.get_register_value(1 /* C */, &RegisterAccess::Full);
+                        if cx_value != 0 {
+                            instruction_pointer = ((instruction_pointer as isize) + *offset as isize) as usize;
+                        }
+                    },
 
                     _ => todo!("this conditional jump not implemented")
                 };

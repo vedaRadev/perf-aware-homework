@@ -109,7 +109,7 @@ impl fmt::Display for EffectiveAddress {
                 let displacement = *displacement;
                 if displacement == 0 { return write!(formatter, "[{}]", base); }
 
-                let [disp_lo, disp_hi] = displacement.to_ne_bytes();
+                let [disp_hi, disp_lo] = displacement.to_be_bytes();
                 let is_wide = disp_hi != 0;
                 let is_disp_negative = if is_wide { disp_hi.rotate_left(1) & 1 == 1 } else { disp_lo.rotate_left(1) & 1 == 1 };
                 let disp_sign = if is_disp_negative { "-" } else { "+" };

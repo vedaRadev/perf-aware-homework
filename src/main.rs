@@ -27,8 +27,8 @@ impl RegisterSet {
 
     fn get_register_value(&self, encoding: u8, access: &RegisterAccess) -> u16 {
         match access {
-            RegisterAccess::Low => self.registers[encoding as usize].to_ne_bytes()[1] as u16,
-            RegisterAccess::High => self.registers[encoding as usize].to_ne_bytes()[0] as u16,
+            RegisterAccess::Low => self.registers[encoding as usize].to_be_bytes()[1] as u16,
+            RegisterAccess::High => self.registers[encoding as usize].to_be_bytes()[0] as u16,
             RegisterAccess::Full => self.registers[encoding as usize],
         }
     }
@@ -97,6 +97,11 @@ fn main() {
                     process::exit(1);
                 }
 
+                if args[arg_index].starts_with('-') {
+                    println!("unrecognized command line argument");
+                    process::exit(1);
+                }
+
                 assembly_filename = Some(&args[arg_index]);
 
                 arg_index += 1;
@@ -104,7 +109,10 @@ fn main() {
         }
     }
 
-    let assembly_filename = assembly_filename.unwrap();
+    let assembly_filename = assembly_filename.unwrap_or_else(|| {
+        println!("assembled binary not supplied, aborting");
+        process::exit(1);
+    });
     let memdump_filename = memdump_filename.unwrap_or("");
 
     if should_dump_memory && !should_execute {
@@ -149,7 +157,7 @@ fn main() {
 
         match &instruction.operands {
             [ Some(destination), Some(source) ] => {
-                let source_value = match source {
+                let source_value: u16 = match source {
                     Operand::Register(encoding, access) => register_set.get_register_value(*encoding, access),
                     Operand::ImmediateData(data) => *data,
 
@@ -190,7 +198,7 @@ fn main() {
 
                             Operand::Memory(EffectiveAddress::Direct(address)) => {
                                 let address = *address as usize;
-                                let [ hi, lo ] = source_value.to_ne_bytes();
+                                let [ hi, lo ] = source_value.to_be_bytes();
                                 if instruction.flags.wide {
                                     memory[address] = hi;
                                     memory[address + 1] = lo;
@@ -201,7 +209,7 @@ fn main() {
 
                             Operand::Memory(EffectiveAddress::Calculated { base, displacement }) => {
                                 let address = register_set.calculate_effective_address(base, *displacement) as usize;
-                                let [ hi, lo ] = source_value.to_ne_bytes();
+                                let [ hi, lo ] = source_value.to_be_bytes();
                                 if instruction.flags.wide {
                                     memory[address] = hi;
                                     memory[address + 1] = lo;
@@ -227,8 +235,8 @@ fn main() {
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                    RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_be_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_be_bytes()[0] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
@@ -253,8 +261,8 @@ fn main() {
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                    RegisterAccess::Low => (reg_val_after.to_ne_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (reg_val_after.to_ne_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_be_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_be_bytes()[0] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
@@ -278,8 +286,8 @@ fn main() {
                                 flags.zero = test_val == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (test_val as i16) < 0,
-                                    RegisterAccess::Low => (test_val.to_ne_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (test_val.to_ne_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (test_val.to_be_bytes()[1] as i8) < 0,
+                                    RegisterAccess::High => (test_val.to_be_bytes()[0] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));

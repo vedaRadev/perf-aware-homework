@@ -99,6 +99,29 @@ impl EffectiveAddress {
             Self::Calculated { base, displacement }
         }
     }
+
+    fn get_clocks_estimate(&self) -> u16 {
+        // if implemented, add 2 clocks when a segment override is present
+        match self {
+            Self::Direct(_) => 6,
+            // TODO need to add 4 clocks for each 16-bit word transfer w/ odd address (see manual)
+            Self::Calculated { base, displacement } => match base {
+                EffectiveAddressBase::BX
+                | EffectiveAddressBase::BP
+                | EffectiveAddressBase::SI
+                | EffectiveAddressBase::DI
+                => if *displacement == 0 { 5 } else { 9 },
+
+                EffectiveAddressBase::BP_DI
+                | EffectiveAddressBase::BX_SI
+                => if *displacement == 0 { 7 } else { 11 },
+
+                EffectiveAddressBase::BP_SI
+                | EffectiveAddressBase::BX_DI
+                => if *displacement == 0 { 8 } else { 12 }
+            }
+        }
+    }
 }
 
 impl fmt::Display for EffectiveAddress {
@@ -224,10 +247,106 @@ pub enum Operation {
 pub struct Instruction {
     pub operation: Operation,
     pub operands: [Option<Operand>; 2], // e.g. opcode operand_1, operand_2 (max 2 operands)
-    // TODO stop using a vector for flags! Pushing items into the vector is causing unnecessary
-    // allocations. It was a shitty idea to begin with anyway.
     pub flags: InstructionFlags,
     pub size: u8,
+}
+
+type ClockEstimate = u16;
+type ClockExplanation = String;
+fn get_ea_clocks_and_explanation(base_clocks: u16, ea: &EffectiveAddress) -> (ClockEstimate, Option<ClockExplanation>) {
+    let ea_clocks = ea.get_clocks_estimate();
+    let clocks = base_clocks + ea_clocks;
+    (clocks, Some(format!("{} + {}ea", base_clocks, ea_clocks)))
+}
+
+impl Instruction {
+    pub fn get_clocks_estimate(&self) -> (ClockEstimate, Option<ClockExplanation>) {
+        match self.operation {
+            Operation::Mov_Acc_To_Mem | Operation::Mov_Mem_To_Acc => (10, None),
+            Operation::Mov_Imm_To_Reg => (4, None),
+            Operation::Mov_Imm_To_RegMem => match &self.operands[0] {
+                Some(Operand::Register(..)) => (4, None),
+                Some(Operand::Memory(ea)) => get_ea_clocks_and_explanation(10, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+            Operation::Mov_RegMem_ToFrom_Reg => match &self.operands {
+                [ Some(Operand::Register(..)), Some(Operand::Register(..)) ] => (2, None),
+                [ Some(Operand::Register(..)), Some(Operand::Memory(ea)) ] => get_ea_clocks_and_explanation(8, ea),
+                [ Some(Operand::Memory(ea)), Some(Operand::Register(..)) ] => get_ea_clocks_and_explanation(9, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+
+            Operation::Add_Imm_To_Acc => (4, None),
+            Operation::Add_Imm_To_RegMem => {
+                let [ dst_op, _ ] = &self.operands;
+                match dst_op {
+                    Some(Operand::Register(..)) => (4, None),
+                    Some(Operand::Memory(ea)) => get_ea_clocks_and_explanation(17, ea),
+                    _ => panic!("other ops not supported for this operation. how did this happen?")
+                }
+            },
+            Operation::Add_RegMem_With_Reg_To_Either => {
+                match &self.operands {
+                    [ Some(Operand::Register(..)), Some(Operand::Register(..)) ] => (3, None),
+                    [ Some(Operand::Register(..)), Some(Operand::Memory(ea)) ] => get_ea_clocks_and_explanation(9, ea),
+                    [ Some(Operand::Memory(ea)), Some(Operand::Register(..)) ] => get_ea_clocks_and_explanation(16, ea),
+                    _ => panic!("other operand combos not supported for this operation")
+                }
+            },
+
+            Operation::Sub_Imm_From_Acc => (4, None),
+            Operation::Sub_Imm_From_RegMem => match &self.operands[0] {
+                Some(Operand::Register(..)) => (4, None),
+                Some(Operand::Memory(ea)) => get_ea_clocks_and_explanation(17, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+            Operation::Sub_RegMem_And_Reg_From_Either => match &self.operands {
+                [ Some(Operand::Register(..)), Some(Operand::Register(..)) ] => (3, None),
+                [ Some(Operand::Register(..)), Some(Operand::Memory(ea)) ] => get_ea_clocks_and_explanation(9, ea),
+                [ Some(Operand::Memory(ea)), Some(Operand::Register(..)) ] => get_ea_clocks_and_explanation(16, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+
+            Operation::Cmp_Imm_With_Acc => (4, None),
+            Operation::Cmp_Imm_With_RegMem => match &self.operands[0] {
+                Some(Operand::Register(..)) => (4, None),
+                Some(Operand::Memory(ea)) => get_ea_clocks_and_explanation(10, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+            Operation::Cmp_RegMem_And_Reg => match &self.operands {
+                [ Some(Operand::Register(..)), Some(Operand::Register(..)) ] => (3, None),
+                [ Some(Operand::Register(..)), Some(Operand::Memory(ea)) ] => get_ea_clocks_and_explanation(9, ea),
+                [ Some(Operand::Memory(ea)), Some(Operand::Register(..)) ] => get_ea_clocks_and_explanation(9, ea),
+                _ => panic!("other operand combos not supported for this operation"),
+            },
+
+
+            Operation::Jmp_On_Equal
+            | Operation::Jmp_On_Less
+            | Operation::Jmp_On_Less_Or_Equal
+            | Operation::Jmp_On_Below
+            | Operation::Jmp_On_Below_Or_Equal
+            | Operation::Jmp_On_Greater
+            | Operation::Jmp_On_Above
+            | Operation::Jmp_On_Parity
+            | Operation::Jmp_On_Overflow
+            | Operation::Jmp_On_Sign
+            | Operation::Jmp_On_Not_Equal
+            | Operation::Jmp_On_Not_Less
+            | Operation::Jmp_On_Not_Below
+            | Operation::Jmp_On_Not_Parity
+            | Operation::Jmp_On_Not_Overflow
+            | Operation::Jmp_On_Not_Sign
+            | Operation::Jmp_On_CX_Zero
+            => (4, None),
+
+            Operation::Loop => (5, None),
+            Operation::Loop_While_Zero => (6, None),
+            Operation::Loop_While_Not_Zero => (5, None),
+            
+            Operation::Halt => (2, None),
+        }
+    }
 }
 
 impl fmt::Display for Instruction {

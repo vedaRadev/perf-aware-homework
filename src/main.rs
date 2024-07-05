@@ -27,8 +27,8 @@ impl RegisterSet {
 
     fn get_register_value(&self, encoding: u8, access: &RegisterAccess) -> u16 {
         match access {
-            RegisterAccess::Low => self.registers[encoding as usize].to_be_bytes()[1] as u16,
-            RegisterAccess::High => self.registers[encoding as usize].to_be_bytes()[0] as u16,
+            RegisterAccess::Low => self.registers[encoding as usize].to_le_bytes()[0] as u16,
+            RegisterAccess::High => self.registers[encoding as usize].to_le_bytes()[1] as u16,
             RegisterAccess::Full => self.registers[encoding as usize],
         }
     }
@@ -68,6 +68,8 @@ fn main() {
     let mut memdump_filename: Option<&str> = None;
     let mut should_execute = false;
     let mut should_dump_memory = false;
+    let mut should_show_clocks = false;
+    let mut should_explain_clocks = false;
     // we'll skip the first arg since it should just be the executable filename
     let mut arg_index = 1;
     // probably dumb way to parse args
@@ -89,6 +91,16 @@ fn main() {
                 memdump_filename = Some(&args[arg_index + 1]);
 
                 arg_index += 2;
+            },
+
+            "--showclocks" => {
+                should_show_clocks = true;
+                arg_index += 1;
+            },
+
+            "--explainclocks" => {
+                should_explain_clocks = true;
+                arg_index += 1;
             },
 
             _ => {
@@ -115,6 +127,10 @@ fn main() {
     });
     let memdump_filename = memdump_filename.unwrap_or("");
 
+    if should_explain_clocks && !should_show_clocks {
+        println!("Can't explain clocks if not showing clocks, include --showclocks");
+    }
+
     if should_dump_memory && !should_execute {
         println!("Memory can only be dumped if executing a program");
         process::exit(1);
@@ -128,6 +144,7 @@ fn main() {
     let mut register_set = RegisterSet::new();
     let mut flags = Flags::new();
     let mut instruction_pointer = 0;
+    let mut total_clocks = 0;
     let mut memory = [0u8; u16::MAX as usize]; // 64k instead of 1MB since not using segment registers
     memory[..instruction_stream.len()].copy_from_slice(&instruction_stream);
     memory[instruction_stream.len()] = 0b11110100; // insert HALT at end of instructions
@@ -198,10 +215,10 @@ fn main() {
 
                             Operand::Memory(EffectiveAddress::Direct(address)) => {
                                 let address = *address as usize;
-                                let [ hi, lo ] = source_value.to_be_bytes();
+                                let [ lo, hi ] = source_value.to_le_bytes();
                                 if instruction.flags.wide {
-                                    memory[address] = hi;
-                                    memory[address + 1] = lo;
+                                    memory[address] = lo;
+                                    memory[address + 1] = hi;
                                 } else {
                                     memory[address] = lo;
                                 }
@@ -209,10 +226,10 @@ fn main() {
 
                             Operand::Memory(EffectiveAddress::Calculated { base, displacement }) => {
                                 let address = register_set.calculate_effective_address(base, *displacement) as usize;
-                                let [ hi, lo ] = source_value.to_be_bytes();
+                                let [ lo, hi ] = source_value.to_le_bytes();
                                 if instruction.flags.wide {
-                                    memory[address] = hi;
-                                    memory[address + 1] = lo;
+                                    memory[address] = lo;
+                                    memory[address + 1] = hi;
                                 } else {
                                     memory[address] = lo;
                                 }
@@ -235,14 +252,34 @@ fn main() {
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                    RegisterAccess::Low => (reg_val_after.to_be_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (reg_val_after.to_be_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_le_bytes()[0] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_le_bytes()[1] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
                             },
 
-                            Operand::Memory(_) => todo!(),
+                            Operand::Memory(EffectiveAddress::Direct(address)) => {
+                                let address = *address as usize;
+                                if instruction.flags.wide {
+                                    let [ lo, hi ] = (read_word(&memory, address) + source_value).to_le_bytes();
+                                    memory[address] = lo;
+                                    memory[address + 1] = hi;
+                                } else {
+                                    memory[address] += (source_value & 0xFF) as u8;
+                                }
+                            },
+
+                            Operand::Memory(EffectiveAddress::Calculated { base, displacement }) => {
+                                let address = register_set.calculate_effective_address(base, *displacement) as usize;
+                                if instruction.flags.wide {
+                                    let [ lo, hi ] = (read_word(&memory, address) + source_value).to_le_bytes();
+                                    memory[address] = lo;
+                                    memory[address + 1] = hi;
+                                } else {
+                                    memory[address] += (source_value & 0xFF) as u8;
+                                }
+                            },
 
                             _ => panic!("cannot add into immediate or label offset"),
                         }
@@ -261,8 +298,8 @@ fn main() {
                                 flags.zero = reg_val_after == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (reg_val_after as i16) < 0,
-                                    RegisterAccess::Low => (reg_val_after.to_be_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (reg_val_after.to_be_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (reg_val_after.to_le_bytes()[0] as i8) < 0,
+                                    RegisterAccess::High => (reg_val_after.to_le_bytes()[1] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
@@ -286,8 +323,8 @@ fn main() {
                                 flags.zero = test_val == 0;
                                 flags.sign = match access {
                                     RegisterAccess::Full => (test_val as i16) < 0,
-                                    RegisterAccess::Low => (test_val.to_be_bytes()[1] as i8) < 0,
-                                    RegisterAccess::High => (test_val.to_be_bytes()[0] as i8) < 0,
+                                    RegisterAccess::Low => (test_val.to_le_bytes()[0] as i8) < 0,
+                                    RegisterAccess::High => (test_val.to_le_bytes()[1] as i8) < 0,
                                 };
 
                                 destination_value_after = Some(register_set.get_register_value(*encoding, &RegisterAccess::Full));
@@ -304,7 +341,9 @@ fn main() {
 
 
                 if destination_value_before.is_some() && destination_value_after.is_some() {
-                    print!(" {}:{:#x}->{:#x}", destination, destination_value_before.unwrap(), destination_value_after.unwrap());
+                    let dst_bef = destination_value_before.unwrap();
+                    let dst_aft = destination_value_after.unwrap();
+                    print!(" {}:{:#x}({})->{:#x}({})", destination, dst_bef, dst_bef, dst_aft, dst_aft);
                 }
             },
 
@@ -328,6 +367,16 @@ fn main() {
             [ None, None ] => todo!("0-operand instructions not implemented"),
             _ => panic!("invalid operand configuration [ None, Some(...) ]"),
         };
+
+        if should_show_clocks {
+            let (clocks, explanation) = instruction.get_clocks_estimate();
+            total_clocks += clocks;
+            if should_explain_clocks && explanation.is_some() {
+                print!(" Clocks: +{} = {} ({}) |", clocks, total_clocks, explanation.unwrap());
+            } else {
+                print!(" Clocks: +{} = {} |", clocks, total_clocks);
+            }
+        }
 
         print!(" ip:{:#x}->{:#x}", instruction_pointer_before, instruction_pointer);
         let flags_after = flags.get_active_flags_string();

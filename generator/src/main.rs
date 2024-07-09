@@ -14,7 +14,7 @@ fn reference_haversine(x0: Degrees, y0: Degrees, x1: Degrees, y1: Degrees, radiu
     radius * c
 }
 
-struct PolarPair((Degrees, Degrees), (Degrees, Degrees));
+struct PolarPair((Degrees, Degrees), (Degrees, Degrees), f64);
 
 const EARTH_RADIUS: f64 = 6372.8;
 const CLUSTER_X_RADIUS: f64 = 30.0;
@@ -45,10 +45,12 @@ fn main() {
     // look different when stuff like SIMD is introduced. We may also do the loop unrolling thing
     // from the prologue of the course.
     let max_pairs_per_cluster = cmp::max((num_pairs as f64 / max_clusters as f64).ceil() as usize, 1);
+    let mut actual_clusters: usize = 0;
     let mut pairs_generated: usize = 0;
     let mut total_haversine: f64 = 0.0;
     let mut polar_pairs: Vec<PolarPair> = Vec::with_capacity(num_pairs);
     'outer: for _cluster_index in 0 .. max_clusters {
+        actual_clusters += 1;
         let cluster_x: Degrees = rng.gen_range(-180.0 .. 180.0);
         let cluster_y: Degrees = rng.gen_range(-90.0 .. 90.0);
 
@@ -63,22 +65,30 @@ fn main() {
             let y0 = rng.gen_range(cluster_y_start .. cluster_y_end);
             let x1 = rng.gen_range(cluster_x_start .. cluster_x_end);
             let y1 = rng.gen_range(cluster_y_start .. cluster_y_end);
-            polar_pairs.push(PolarPair((x0, y0), (x1, y1)));
 
             let haversine_distance = reference_haversine(x0, y0, x1, y1, EARTH_RADIUS);
             total_haversine += haversine_distance;
 
+            polar_pairs.push(PolarPair((x0, y0), (x1, y1), haversine_distance));
+
             pairs_generated += 1;
-            println!("{}: ({}, {}) ({}, {}) -> {}", pairs_generated, x0, y0, x1, y1, haversine_distance);
+            // println!("{}: ({}, {}) ({}, {}) -> {}", pairs_generated, x0, y0, x1, y1, haversine_distance);
 
             if pairs_generated == num_pairs { break 'outer; }
             if pairs_generated % max_pairs_per_cluster == 0 { break; }
         }
     }
 
-    let mut file = fs::File::create("haversine_pairs.json").expect("Failed to open JSON output file point_pairs.json");
-    let _ = file.write(b"{\n\t\"pairs\": [\n").expect("failed to write to JSON output file point_pairs.json");
-    for (idx, PolarPair((x0, y0), (x1, y1))) in polar_pairs.iter().enumerate() {
+    // We're going to write two files:
+    // 1) The JSON containing the haversine pairs
+    // 2) A binary file containing the actual haversine distance for each pair, and the computed
+    //    average haversine tacked on to the very end. This is going to be useful for checking the
+    //    validity of our other haversine distance function in the processor.
+    let average_haversine: f64 = total_haversine / pairs_generated as f64;
+    let mut json = fs::File::create("haversine_pairs.json").expect("Failed to open JSON output");
+    let mut bin = fs::File::create("haversine_answers.f64").expect("Failed to open binary output file");
+    let _ = json.write(b"{\n\t\"pairs\": [\n").expect("failed to write to JSON output file");
+    for (idx, PolarPair((x0, y0), (x1, y1), distance)) in polar_pairs.iter().enumerate() {
         // { "x0":<x0>, "y0":<y0>, "x1":<x1>, "y1":<y1> }
         let string = format!(
             "\t\t{{\"x0\":{}, \"y0\":{}, \"x1\":{}, \"y1\":{}}}{}\n",
@@ -88,10 +98,15 @@ fn main() {
             y1,
             if idx == polar_pairs.len() - 1 { "" } else { "," }
         );
-        let _ = file.write(string.as_bytes()).expect("failed to write to JSON output file point_pairs.json");
+        let _ = json.write(string.as_bytes()).expect("failed to write to JSON output");
+        let _ = bin.write(&distance.to_ne_bytes()).expect("failed to write to binary output");
     }
-    let _ = file.write(b"\t]\n}");
+    let _ = json.write(b"\t]\n}").expect("failed to write to JSON output");
+    let _ = bin.write(&average_haversine.to_ne_bytes()).expect("failed to write to binary output");
 
-    let average_haversine: f64 = total_haversine / pairs_generated as f64;
+    println!("seed: {}", seed);
+    println!("num pairs: {}", num_pairs);
+    println!("max clusters: {}", max_clusters);
+    println!("actual clusters: {}", actual_clusters);
     println!("expected haversine average: {}", average_haversine);
 }

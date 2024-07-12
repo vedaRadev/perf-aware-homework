@@ -52,7 +52,7 @@ struct JsonToken<'a> {
 #[derive(Default)]
 pub struct JsonElement {
     label: Option<String>,
-    pub value: Option<Vec<u8>>,
+    pub value: Option<String>,
 
     // Should we somehow be storing these in vecs for contiguous memory?
     first_child: Option<Rc<JsonElement>>,
@@ -64,7 +64,7 @@ impl JsonElement {
         let mut maybe_sub_element = &self.first_child;
         while let Some(sub_element) = maybe_sub_element {
             let sub_element_label = sub_element.label.as_ref().expect("expected sub-element to have a label but it did not");
-            if sub_element_label.as_str() == label {
+            if sub_element_label == label {
                 return Some(Rc::clone(sub_element));
             }
 
@@ -72,6 +72,23 @@ impl JsonElement {
         }
 
         None
+    }
+
+    pub fn get_value_as<T: std::str::FromStr>(&self) -> Result<Option<T>, <T as std::str::FromStr>::Err> {
+        if let Some(value) = &self.value {
+            let parsed = value.parse::<T>()?;
+            return Ok(Some(parsed));
+        }
+
+        Ok(None)
+    }
+
+    pub fn get_element_value_as<T: std::str::FromStr>(&self, label: &str) -> Result<Option<T>, <T as std::str::FromStr>::Err> {
+        if let Some(element) = self.get_element(label) {
+            element.get_value_as::<T>()
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn iter(&self) -> JsonElementIterator {
@@ -115,7 +132,7 @@ impl<'a> JsonParser<'a> {
             | Some(JsonToken { token_type: JsonTokenType::Null, value })
             => Ok(JsonElement {
                 label: None,
-                value: Some(value.to_vec()),
+                value: Some(String::from_utf8_lossy(value).to_string()),
                 first_child: None,
                 next_sibling: None,
             }),
@@ -437,11 +454,11 @@ mod tests {
             value: None,
             first_child: Some(Rc::new(JsonElement {
                 label: Some(String::from("my_num")),
-                value: Some(vec![0, 0, 0, 0, 1, 1, 1, 1]),
+                value: None,
                 first_child: None,
                 next_sibling: Some(Rc::new(JsonElement {
                     label: Some(my_str_label.clone()),
-                    value: Some(my_str_val.as_bytes().to_vec()),
+                    value: Some(my_str_val.clone()),
                     first_child: None,
                     next_sibling: None,
                 }))
@@ -457,8 +474,7 @@ mod tests {
         assert!(Rc::ptr_eq(&element, obj_element));
 
         let value = element.value.as_ref().unwrap();
-        let string = String::from_utf8_lossy(value);
-        assert_eq!(string, my_str_val);
+        assert_eq!(*value, my_str_val);
     }
 
     fn next_token_matches(parser: &mut JsonParser, token_type: JsonTokenType, value: &[u8]) -> bool {
@@ -517,10 +533,10 @@ mod tests {
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
         let child = object.get_element("s").expect("object did not have element with label \"s\"");
         let value = child.value.as_ref().expect("child element with label \"s\" has no value");
-        assert_eq!(value, br#""world""#);
+        assert_eq!(value, r#""world""#);
         let child = object.get_element("number").expect("object did not have element with label \"number\"");
         let value = child.value.as_ref().expect("child element with label \"number\" has no value");
-        assert_eq!(value, b"12");
+        assert_eq!(value, "12");
 
         // TEST NESTED OBJECT
         let mut parser = JsonParser::new(br#"{ "hello": "world", "nested": { "number": 10 } }"#);
@@ -531,7 +547,7 @@ mod tests {
         assert!(object.value.is_none(), "nested object element had a value for some reason");
         let child = object.get_element("number").expect("nested object did not have element with label \"number\"");
         let value = child.value.as_ref().expect("child element with label \"number\" has no value");
-        assert_eq!(value, b"10");
+        assert_eq!(value, "10");
     }
 
     #[test]
@@ -542,26 +558,26 @@ mod tests {
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
         let item = array.get_element("0").expect("array did not have element at 0");
         let value = item.value.as_ref().expect("0th element did not have a value");
-        assert_eq!(value, b"1");
+        assert_eq!(value, "1");
         let item = array.get_element("1").expect("array did not have element at 1");
         let value = item.value.as_ref().expect("element at 1 did not have a value");
-        assert_eq!(value, b"-22.45e10");
+        assert_eq!(value, "-22.45e10");
         let item = array.get_element("2").expect("array did not have element at 2");
         let value = item.value.as_ref().expect("element at 2 did not have a value");
-        assert_eq!(value, br#""hello world""#);
+        assert_eq!(value, r#""hello world""#);
         let item = array
             .get_element("3").expect("array did not have element at 3")
             .get_element("bool").expect("nested object in array did not have element named \"bool\"");
         let value = item.value.as_ref().expect("nested object element \"bool\" did not have a value");
-        assert_eq!(value, b"true");
+        assert_eq!(value, "true");
         let item = array.get_element("4").expect("array did not have element at 4");
         let value = item.value.as_ref().expect("element at 4 did not have a value");
-        assert_eq!(value, b"null");
+        assert_eq!(value, "null");
         let item = array
             .get_element("5").expect("array did not have element at 5")
             .get_element("0").expect("nested array did not have element at 0");
         let value = item.value.as_ref().expect("element at 0 in nested array had no value somehow");
-        assert_eq!(value, br#""nested array""#);
+        assert_eq!(value, r#""nested array""#);
     }
 
     #[test]
@@ -570,31 +586,31 @@ mod tests {
         let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
-        assert_eq!(value, b"false");
+        assert_eq!(value, "false");
 
         let mut parser = JsonParser::new(b"true");
         let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
-        assert_eq!(value, b"true");
+        assert_eq!(value, "true");
 
         let mut parser = JsonParser::new(b"null");
         let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
-        assert_eq!(value, b"null");
+        assert_eq!(value, "null");
 
         let mut parser = JsonParser::new(br#""Hello, World!""#);
         let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
-        assert_eq!(value, br#""Hello, World!""#);
+        assert_eq!(value, r#""Hello, World!""#);
 
         let mut parser = JsonParser::new(b"-1059.4729887E+744");
         let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
-        assert_eq!(value, b"-1059.4729887E+744");
+        assert_eq!(value, "-1059.4729887E+744");
     }
 
     #[test]
@@ -605,15 +621,15 @@ mod tests {
             next_sibling: None,
             first_child: Some(Rc::new(JsonElement{
                 label: None,
-                value: Some(b"1".to_vec()),
+                value: Some(String::from("1")),
                 first_child: None,
                 next_sibling: Some(Rc::new(JsonElement {
                     label: None,
-                    value: Some(b"2".to_vec()),
+                    value: Some(String::from("2")),
                     first_child: None,
                     next_sibling: Some(Rc::new(JsonElement {
                         label: None,
-                        value: Some(b"3".to_vec()),
+                        value: Some(String::from("3")),
                         first_child: None,
                         next_sibling: None,
                     }))
@@ -623,11 +639,11 @@ mod tests {
 
         let mut element_iterator = json_element.iter();
         let child = element_iterator.next().expect("first child was None");
-        assert_eq!(child.value.as_ref().unwrap(), b"1");
+        assert_eq!(child.value.as_ref().unwrap(), "1");
         let child = element_iterator.next().expect("second child was None");
-        assert_eq!(child.value.as_ref().unwrap(), b"2");
+        assert_eq!(child.value.as_ref().unwrap(), "2");
         let child = element_iterator.next().expect("third child was None");
-        assert_eq!(child.value.as_ref().unwrap(), b"3");
+        assert_eq!(child.value.as_ref().unwrap(), "3");
     }
 
     #[test]

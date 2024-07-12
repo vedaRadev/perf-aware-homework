@@ -73,8 +73,28 @@ impl JsonElement {
 
         None
     }
+
+    pub fn iter(&self) -> JsonElementIterator {
+        JsonElementIterator {
+            current_element: self.first_child.as_ref().map(Rc::clone)
+        }
+    }
 }
 
+pub struct JsonElementIterator { current_element: Option<Rc<JsonElement>> }
+impl Iterator for JsonElementIterator {
+    type Item = Rc<JsonElement>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(element) = &self.current_element {
+            let result = self.current_element.as_ref().map(Rc::clone);
+            self.current_element = element.next_sibling.as_ref().map(Rc::clone);
+            return result;
+        }
+
+        None
+    }
+}
 
 pub struct JsonParser<'a> { buffer: &'a [u8], position: usize }
 impl<'a> JsonParser<'a> {
@@ -575,6 +595,39 @@ mod tests {
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
             .value.expect("json element had no value");
         assert_eq!(value, b"-1059.4729887E+744");
+    }
+
+    #[test]
+    fn json_element_iterator() {
+        let json_element = JsonElement {
+            label: None,
+            value: None,
+            next_sibling: None,
+            first_child: Some(Rc::new(JsonElement{
+                label: None,
+                value: Some(b"1".to_vec()),
+                first_child: None,
+                next_sibling: Some(Rc::new(JsonElement {
+                    label: None,
+                    value: Some(b"2".to_vec()),
+                    first_child: None,
+                    next_sibling: Some(Rc::new(JsonElement {
+                        label: None,
+                        value: Some(b"3".to_vec()),
+                        first_child: None,
+                        next_sibling: None,
+                    }))
+                }))
+            }))
+        };
+
+        let mut element_iterator = json_element.iter();
+        let child = element_iterator.next().expect("first child was None");
+        assert_eq!(child.value.as_ref().unwrap(), b"1");
+        let child = element_iterator.next().expect("second child was None");
+        assert_eq!(child.value.as_ref().unwrap(), b"2");
+        let child = element_iterator.next().expect("third child was None");
+        assert_eq!(child.value.as_ref().unwrap(), b"3");
     }
 
     #[test]

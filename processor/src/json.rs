@@ -46,12 +46,12 @@ struct JsonToken<'a> {
 #[derive(PartialEq)]
 #[derive(Default)]
 pub struct JsonElement {
-    pub label: Option<String>,
+    label: Option<String>,
     pub value: Option<Vec<u8>>,
 
     // Should we somehow be storing these in vecs for contiguous memory?
-    pub first_child: Option<Rc<JsonElement>>,
-    pub next_sibling: Option<Rc<JsonElement>>
+    first_child: Option<Rc<JsonElement>>,
+    next_sibling: Option<Rc<JsonElement>>
 }
 
 impl JsonElement {
@@ -71,7 +71,7 @@ impl JsonElement {
 }
 
 
-struct JsonParser<'a> { buffer: &'a [u8], position: usize }
+pub struct JsonParser<'a> { buffer: &'a [u8], position: usize }
 impl<'a> JsonParser<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
         Self { buffer, position: 0 }

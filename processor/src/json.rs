@@ -2,6 +2,11 @@ use std::{ fmt, slice, rc::Rc, };
 
 #[derive(Debug)]
 pub struct InvalidJsonError { at: usize, message: String }
+impl fmt::Display for InvalidJsonError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid json at position {}: {}", self.at, self.message)
+    }
+}
 
 #[derive(PartialEq)]
 #[derive(Debug)]
@@ -154,7 +159,7 @@ impl<'a> JsonParser<'a> {
 
             let mut child_element = Self::parse_value(buffer, position)?;
 
-            child_element.label = Some(String::from_utf8_lossy(child_label).to_string());
+            child_element.label = Some(String::from_utf8_lossy(child_label).trim_matches('"').to_string());
             let child_element = Rc::new(child_element);
             if let Some(last_child) = last_child.as_mut() {
                 let last_child = Rc::as_ptr(last_child) as *mut JsonElement;
@@ -185,7 +190,7 @@ impl<'a> JsonParser<'a> {
         loop {
             let mut child_element = Self::parse_value(buffer, position)?;
 
-            child_element.label = Some(format!(r#""{}""#, element_index));
+            child_element.label = Some(format!("{}", element_index));
             let child_element = Rc::new(child_element);
             if let Some(last_child) = last_child.as_mut() {
                 let last_child = Rc::as_ptr(last_child) as *mut JsonElement;
@@ -490,10 +495,10 @@ mod tests {
         parser.position += 1; // skip over the opening brace: we already know it's an object
         let object = JsonParser::parse_object(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
-        let child = object.get_element(r#""s""#).expect("object did not have element with label \"s\"");
+        let child = object.get_element("s").expect("object did not have element with label \"s\"");
         let value = child.value.as_ref().expect("child element with label \"s\" has no value");
         assert_eq!(value, br#""world""#);
-        let child = object.get_element(r#""number""#).expect("object did not have element with label \"number\"");
+        let child = object.get_element("number").expect("object did not have element with label \"number\"");
         let value = child.value.as_ref().expect("child element with label \"number\" has no value");
         assert_eq!(value, b"12");
 
@@ -502,9 +507,9 @@ mod tests {
         parser.position += 1; // skip over the opening brace: we already know it's an object
         let object = JsonParser::parse_object(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
-        let object = object.get_element(r#""nested""#).expect("object did not have element with label \"nested\"");
+        let object = object.get_element("nested").expect("object did not have element with label \"nested\"");
         assert!(object.value.is_none(), "nested object element had a value for some reason");
-        let child = object.get_element(r#""number""#).expect("nested object did not have element with label \"number\"");
+        let child = object.get_element("number").expect("nested object did not have element with label \"number\"");
         let value = child.value.as_ref().expect("child element with label \"number\" has no value");
         assert_eq!(value, b"10");
     }
@@ -515,26 +520,26 @@ mod tests {
         parser.position += 1; // skip over opening bracket; we already know it's an array
         let array = JsonParser::parse_array(parser.buffer, &mut parser.position)
             .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
-        let item = array.get_element(r#""0""#).expect("array did not have element at 0");
+        let item = array.get_element("0").expect("array did not have element at 0");
         let value = item.value.as_ref().expect("0th element did not have a value");
         assert_eq!(value, b"1");
-        let item = array.get_element(r#""1""#).expect("array did not have element at 1");
+        let item = array.get_element("1").expect("array did not have element at 1");
         let value = item.value.as_ref().expect("element at 1 did not have a value");
         assert_eq!(value, b"-22.45e10");
-        let item = array.get_element(r#""2""#).expect("array did not have element at 2");
+        let item = array.get_element("2").expect("array did not have element at 2");
         let value = item.value.as_ref().expect("element at 2 did not have a value");
         assert_eq!(value, br#""hello world""#);
         let item = array
-            .get_element(r#""3""#).expect("array did not have element at 3")
-            .get_element(r#""bool""#).expect("nested object in array did not have element named \"bool\"");
+            .get_element("3").expect("array did not have element at 3")
+            .get_element("bool").expect("nested object in array did not have element named \"bool\"");
         let value = item.value.as_ref().expect("nested object element \"bool\" did not have a value");
         assert_eq!(value, b"true");
-        let item = array.get_element(r#""4""#).expect("array did not have element at 4");
+        let item = array.get_element("4").expect("array did not have element at 4");
         let value = item.value.as_ref().expect("element at 4 did not have a value");
         assert_eq!(value, b"null");
         let item = array
-            .get_element(r#""5""#).expect("array did not have element at 5")
-            .get_element(r#""0""#).expect("nested array did not have element at 0");
+            .get_element("5").expect("array did not have element at 5")
+            .get_element("0").expect("nested array did not have element at 0");
         let value = item.value.as_ref().expect("element at 0 in nested array had no value somehow");
         assert_eq!(value, br#""nested array""#);
     }

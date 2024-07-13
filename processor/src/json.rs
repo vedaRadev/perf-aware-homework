@@ -98,6 +98,31 @@ impl JsonElement {
     }
 }
 
+impl Drop for JsonElement {
+    fn drop(&mut self) {
+        // It's going to be rare for JSON to be nested so deeply that it overflows the stack when
+        // parsing or deallocating memory.
+        if let Some(child) = self.first_child.take() {
+            drop(child);
+        }
+
+        let mut next_sibling = self.next_sibling.take();
+        while let Some(sibling) = &mut next_sibling {
+            // https://rust-unofficial.github.io/too-many-lists/first-drop.html
+            // We're trying to avoid stack overflows caused by recursive destructor calls. Here we
+            // check if the current JSON element is the ONLY thing holding a reference to our
+            // immediate sibling. If we are, then we're going to go ahead and set its link to its
+            // immediate sibling to None with a take(). This is going to bound the recursion.
+            if Rc::strong_count(sibling) == 1 {
+                let ptr = Rc::as_ptr(sibling) as *mut JsonElement;
+                next_sibling = unsafe { (*ptr).next_sibling.take() };
+            } else {
+                next_sibling = None;
+            }
+        }
+    }
+}
+
 pub struct JsonElementIterator { current_element: Option<Rc<JsonElement>> }
 impl Iterator for JsonElementIterator {
     type Item = Rc<JsonElement>;

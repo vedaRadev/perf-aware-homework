@@ -608,33 +608,28 @@ mod tests {
     #[test]
     fn parse_simple_values() {
         let mut parser = JsonParser::new(b"false");
-        let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
-            .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
-            .value.expect("json element had no value");
+        let element = JsonParser::parse_value(parser.buffer, &mut parser.position).unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
+        let value = element.value.as_ref().expect("json element had no value");
         assert_eq!(value, "false");
 
         let mut parser = JsonParser::new(b"true");
-        let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
-            .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
-            .value.expect("json element had no value");
+        let element = JsonParser::parse_value(parser.buffer, &mut parser.position).unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
+        let value = element.value.as_ref().expect("json element had no value");
         assert_eq!(value, "true");
 
         let mut parser = JsonParser::new(b"null");
-        let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
-            .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
-            .value.expect("json element had no value");
+        let element = JsonParser::parse_value(parser.buffer, &mut parser.position).unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
+        let value = element.value.as_ref().expect("json element had no value");
         assert_eq!(value, "null");
 
         let mut parser = JsonParser::new(br#""Hello, World!""#);
-        let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
-            .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
-            .value.expect("json element had no value");
+        let element = JsonParser::parse_value(parser.buffer, &mut parser.position).unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
+        let value = element.value.as_ref().expect("json element had no value");
         assert_eq!(value, r#""Hello, World!""#);
 
         let mut parser = JsonParser::new(b"-1059.4729887E+744");
-        let value = JsonParser::parse_value(parser.buffer, &mut parser.position)
-            .unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message))
-            .value.expect("json element had no value");
+        let element = JsonParser::parse_value(parser.buffer, &mut parser.position).unwrap_or_else(|err| panic!("invalid json at position {}: {}", err.at, err.message));
+        let value = element.value.as_ref().expect("json element had no value");
         assert_eq!(value, "-1059.4729887E+744");
     }
 

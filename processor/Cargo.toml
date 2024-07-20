@@ -7,3 +7,8 @@ description.workspace = true
 
 [dependencies]
 winapi = { version = "0.3.9", features = ["profileapi"] }
+
+[lib]
+proc-macro = true
+name = "profiling_proc_macros"
+path = "src/profiling_proc_macros.rs"

@@ -27,6 +27,7 @@ fn calculate_haversine_distance(x0: Degrees, y0: Degrees, x1: Degrees, y1: Degre
     radius * c
 }
 
+#[inline(always)]
 fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
     let mut value = [0u8; 8];
     buf.read_exact(&mut value)?;
@@ -77,9 +78,7 @@ fn main() {
             iterations += 1;
             if let Some(haversine_validation) = &mut haversine_validation {
                 let expected_distance = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
-                // TODO if we see that some calculations don't pass validation, could be due to
-                // floating point precision error (though probably unlikely with a 64-bit value).
-                if haversine_distance.to_bits() != expected_distance.to_bits() {
+                if (haversine_distance - expected_distance).abs() > 0.000001 {
                     validation_num_incorrect += 1;
                 }
             }

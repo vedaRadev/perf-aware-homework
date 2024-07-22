@@ -9,8 +9,7 @@ static mut PROFILE_COUNT: usize = 0;
 pub fn profile(input: TokenStream) -> TokenStream {
     #![allow(unused_variables)]
 
-    // TODO when done making this function, remove the clone of input
-    let mut token_tree_iterator = input.clone().into_iter();
+    let mut token_tree_iterator = input.into_iter();
     let section_label = match (token_tree_iterator.next(), token_tree_iterator.next()) {
         (Some(TokenTree::Literal(literal)), Some(TokenTree::Punct(punct))) => {
             let raw_literal = format!("{literal}");
@@ -36,7 +35,7 @@ pub fn profile(input: TokenStream) -> TokenStream {
 
     let profile_section_begin = TokenStream::from_str(format!(r#"
         {{
-            use performance_metrics::__GLOBAL_PROFILER;
+            use crate::performance_metrics::__GLOBAL_PROFILER;
             unsafe {{
                 __GLOBAL_PROFILER.begin_section_profile({section_label}, {profile_index});
             }}
@@ -44,7 +43,7 @@ pub fn profile(input: TokenStream) -> TokenStream {
     "#).as_str());
     let profile_section_end = TokenStream::from_str(format!(r#"
         {{
-             use performance_metrics::__GLOBAL_PROFILER;
+             use crate::performance_metrics::__GLOBAL_PROFILER;
              unsafe {{
                  __GLOBAL_PROFILER.end_section_profile({profile_index});
              }}

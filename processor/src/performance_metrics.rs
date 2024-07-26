@@ -1,5 +1,5 @@
 extern crate profiling_proc_macros;
-pub use profiling_proc_macros::profile;
+pub use profiling_proc_macros::{ profile, profile_function };
 
 use winapi::um::profileapi;
 use std::mem;
@@ -21,6 +21,24 @@ impl ProfileSection {
             cycles_elapsed: 0,
             hits: 0,
         }
+    }
+}
+
+pub struct AutoProfile { section_index: usize }
+impl AutoProfile {
+    #[inline(always)]
+    pub fn new(section_label: &'static str, index: usize) -> Self {
+        unsafe { __GLOBAL_PROFILER.begin_section_profile(section_label, index); }
+        Self { section_index: index }
+    }
+}
+impl Drop for AutoProfile {
+    // Helps guard against early returns in profile sections.
+    // If an early return is triggered in a profile section, the instance of AutoProfileSection
+    // will be dropped, allowing us to run this code to automatically close the profile section.
+    #[inline(always)]
+    fn drop(&mut self) {
+        unsafe { __GLOBAL_PROFILER.end_section_profile(self.section_index) }
     }
 }
 

@@ -10,7 +10,7 @@ use std::{
 };
 
 use json::JsonParser;
-use performance_metrics::{ profile, print_profile_info };
+use performance_metrics::{ init_profiler, profile, end_and_print_profile_info };
 
 const EARTH_RADIUS: f64 = 6372.8;
 
@@ -35,6 +35,8 @@ fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
 }
 
 fn main() {
+    init_profiler!();
+
     profile! { "startup";
         // TODO redo command line arg parsing so validation can still be optional and ms_to_wait for
         // perf metrics is required
@@ -96,11 +98,13 @@ fn main() {
             println!("diff: {}", expected_average_haversine - average_haversine);
             println!("invalid calculations: {}", validation_num_incorrect);
         }
+
+        ; // see note on instrument_code in profiling_proc_macros.rs
     }
 
     profile! { "json free";
         drop(object);
     }
 
-    print_profile_info!(cpu_frequency_sample_millis);
+    end_and_print_profile_info!(cpu_frequency_sample_millis);
 }

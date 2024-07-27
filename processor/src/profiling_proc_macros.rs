@@ -5,6 +5,10 @@ use std::{ str::FromStr, iter };
 const MAX_PROFILE_SECTIONS: usize = 4096;
 static mut PROFILE_COUNT: usize = 0;
 
+// TODO 2 options here:
+// 1) Make this way smarter (possibly using the syn crate) so that it can decide when to properly
+//    inject the manual drop at the end of the block.
+// 2) Force the user to specify if a manual drop is needed at the end.
 fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> TokenStream {
     // FIXME probably big perf hit, but maybe okay since it's just compile-time.
     let code = code.collect::<Vec<TokenTree>>();

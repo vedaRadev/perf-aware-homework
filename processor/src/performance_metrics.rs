@@ -46,16 +46,39 @@ impl Drop for AutoProfile {
 /// provided proc macros, I will find you and burn your home down.
 pub struct __GlobalProfiler {
     /// The total elapsed cycles across all profile sections
-    global_cycles: u64,
+    global_cycles_begin: u64,
+    global_cycles_end: u64,
     sections: [Option<ProfileSection>; __get_max_profile_sections!()],
 }
 
+// FIXME Right now there is a problem with nested blocks in that we're double counting.
+// Take this for example:
+// profile! { "outer";
+//      profile { "inner A"; ... }
+//      profile { "inner B"; ... }
+// }
+//
+// We'll count "inner A" and add its cycles to the global cycles.
+// We'll count "inner B" and add its cycles to the global cycles.
+// Finally we'll count "outer" and add it cycles to the global cycles.
+// BUT "outer" consists of the times of both "inner A" and "inner B", so we're actually adding TOO
+// MUCH to our global cycles.
+//
+// To fix, need to implement the idea of a scope. If we begin profiling and see we're already
+// profiling another section, then we must be a nested section profile, and we should add to our
+// own elapsed cycles but NOT to the global cycles.
 impl __GlobalProfiler {
     const fn init() -> Self {
         Self {
-            global_cycles: 0,
+            global_cycles_begin: 0,
+            global_cycles_end: 0,
             sections: [ const { None }; __get_max_profile_sections!() ],
         }
+    }
+
+    #[inline(always)]
+    pub fn begin_profiling(&mut self) {
+        self.global_cycles_begin = read_cpu_timer();
     }
 
     pub fn begin_section_profile(&mut self, label: &'static str, section_index: usize) {
@@ -89,14 +112,17 @@ impl __GlobalProfiler {
             .expect("No profile sections initialized. Was begin_profile_section called prior?");
         let cycles = tsc - section.tsc_begin;
         section.cycles_elapsed += cycles;
-        self.global_cycles += cycles;
     }
 
-    pub fn print_profile_info(&self, cpu_frequency_sample_millis: u64) {
+    pub fn end_and_print_profile_info(&mut self, cpu_frequency_sample_millis: u64) {
+        self.global_cycles_end = read_cpu_timer();
+        let global_cycles = self.global_cycles_end - self.global_cycles_begin;
+
         let cpu_frequency = get_cpu_frequency_estimate(cpu_frequency_sample_millis);
         println!(
-            "Total time profiled: {:.2} ms (cpu freq estimate: {})",
-            self.global_cycles as f64 / cpu_frequency as f64 * 1000.0,
+            "Total time profiled: {:.2} ms, {} cycles (cpu freq estimate: {})",
+            global_cycles as f64 / cpu_frequency as f64 * 1000.0,
+            global_cycles,
             cpu_frequency,
         );
 
@@ -105,11 +131,11 @@ impl __GlobalProfiler {
             let section = section.as_ref().unwrap();
 
             println!(
-                "{}: {} hits, {} cycles ({:.3}%)",
+                "{}: {} hits, {} cycles ({:.4}%)",
                 section.label,
                 section.hits,
                 section.cycles_elapsed,
-                section.cycles_elapsed as f64 / self.global_cycles as f64 * 100.0
+                section.cycles_elapsed as f64 / global_cycles as f64 * 100.0
             );
         }
     }
@@ -118,15 +144,23 @@ impl __GlobalProfiler {
 /// DO NOT TOUCH THE GLOBAL PROFILER. USE THE PROVIDED PROC MACROS.
 pub static mut __GLOBAL_PROFILER: __GlobalProfiler = __GlobalProfiler::init();
 
-macro_rules! print_profile_info {
+macro_rules! end_and_print_profile_info {
     ($cpu_frequency_sample_millis:expr) => {
         unsafe {
-            $crate::performance_metrics::__GLOBAL_PROFILER.print_profile_info($cpu_frequency_sample_millis);
+            $crate::performance_metrics::__GLOBAL_PROFILER.end_and_print_profile_info($cpu_frequency_sample_millis);
         }
     }
 }
+pub(crate) use end_and_print_profile_info;
 
-pub(crate) use print_profile_info;
+macro_rules! init_profiler {
+    () => {
+        unsafe {
+            $crate::performance_metrics::__GLOBAL_PROFILER.begin_profiling();
+        }
+    }
+}
+pub(crate) use init_profiler;
 
 fn get_os_timer_frequency() -> u64 {
     unsafe {

@@ -44,10 +44,12 @@ fn main() {
             process::exit(1);
         }
 
-        let haversine_json_filename: String = args.next().unwrap();
-        let cpu_frequency_sample_millis: u64 = args.next().unwrap().parse().expect("expected millis as u64");
-        let haversine_validation_filename: Option<String> = args.next();
-        drop(args);
+        profile! { "bleep";
+            let haversine_json_filename: String = args.next().unwrap();
+            let cpu_frequency_sample_millis: u64 = args.next().unwrap().parse().expect("expected millis as u64");
+            let haversine_validation_filename: Option<String> = args.next();
+            drop(args);
+        }
     }
 
     profile! { "input read";

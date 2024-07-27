@@ -6,11 +6,15 @@ const MAX_PROFILE_SECTIONS: usize = 4096;
 static mut PROFILE_COUNT: usize = 0;
 
 fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> TokenStream {
-    let ends_with_semicolon = code
-        .clone() // FIXME cloning token stream iterator is NOT cheap
-        .last()
-        .expect("Empty profile section")
-        .to_string() == ";";
+    // FIXME probably big perf hit, but maybe okay since it's just compile-time.
+    let code = code.collect::<Vec<TokenTree>>();
+    if code.is_empty() {
+        panic!("Empty profile section");
+    }
+
+    // FIXME hate this
+    let ends_with_semicolon = code[code.len() - 1].to_string() == ";";
+    let ends_with_profile_macro = code[code.len() - 3].to_string() == "profile" && code[code.len() - 2].to_string() == "!";
 
     let index = unsafe { PROFILE_COUNT };
     unsafe { PROFILE_COUNT += 1 };
@@ -18,15 +22,16 @@ fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> Tok
         panic!("Exceeded max profile section count of {}", MAX_PROFILE_SECTIONS);
     }
 
+    let autoprofile_varname = format!("__auto_profile_{index}");
     let profile_section_begin = TokenStream::from_str(format!(r#"
-        let __auto_profile = crate::performance_metrics::AutoProfile::new({label}, {index});
+        let {autoprofile_varname} = crate::performance_metrics::AutoProfile::new({label}, {index});
     "#).as_str());
 
     let mut instrumented_code = TokenStream::new();
     instrumented_code.extend(profile_section_begin);
     instrumented_code.extend(code);
-    if ends_with_semicolon {
-        instrumented_code.extend(TokenStream::from_str("drop(__auto_profile);"));
+    if ends_with_semicolon || ends_with_profile_macro {
+        instrumented_code.extend(TokenStream::from_str(format!("drop({autoprofile_varname});").as_str()));
     }
 
     instrumented_code

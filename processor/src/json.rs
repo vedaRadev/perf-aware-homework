@@ -190,7 +190,6 @@ impl<'a> JsonParser<'a> {
 
     /// Recursively parses object elements.
     /// Every element in an object has an explicitly-defined label and value.
-    #[profile_function]
     fn parse_object(buffer: &'a [u8], position: &mut usize) -> Result<JsonElement, InvalidJsonError> {
         let mut object = JsonElement::default();
         let mut last_child: Option<Rc<JsonElement>> = None;

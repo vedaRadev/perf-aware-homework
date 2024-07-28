@@ -106,5 +106,6 @@ fn main() {
         drop(object);
     }
 
+    println!();
     end_and_print_profile_info!(cpu_frequency_sample_millis);
 }

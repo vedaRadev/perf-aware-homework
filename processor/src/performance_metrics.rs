@@ -7,29 +7,27 @@ use core::arch::x86_64::_rdtsc;
 use profiling_proc_macros::__get_max_profile_sections;
 
 struct ProfileSection {
-    tsc_begin: u64,
+    label: &'static str,
     cycles_elapsed: u64,
     hits: u64,
-    label: &'static str,
 }
 
 impl ProfileSection {
     fn new(label: &'static str) -> Self {
         Self {
             label,
-            tsc_begin: 0,
             cycles_elapsed: 0,
             hits: 0,
         }
     }
 }
 
-pub struct AutoProfile { section_index: usize }
+pub struct AutoProfile { section_index: usize, start_tsc: u64 }
 impl AutoProfile {
     #[inline(always)]
     pub fn new(section_label: &'static str, index: usize) -> Self {
         unsafe { __GLOBAL_PROFILER.begin_section_profile(section_label, index); }
-        Self { section_index: index }
+        Self { section_index: index, start_tsc: read_cpu_timer() }
     }
 }
 impl Drop for AutoProfile {
@@ -38,7 +36,8 @@ impl Drop for AutoProfile {
     // will be dropped, allowing us to run this code to automatically close the profile section.
     #[inline(always)]
     fn drop(&mut self) {
-        unsafe { __GLOBAL_PROFILER.end_section_profile(self.section_index) }
+        let cycles_elapsed = read_cpu_timer() - self.start_tsc;
+        unsafe { __GLOBAL_PROFILER.end_section_profile(self.section_index, cycles_elapsed) }
     }
 }
 
@@ -102,16 +101,11 @@ impl __GlobalProfiler {
         };
 
         section.hits += 1;
-        section.tsc_begin = read_cpu_timer();
     }
 
-    pub fn end_section_profile(&mut self, section_index: usize) {
-        let tsc = read_cpu_timer();
-
-        let section = self.sections[section_index].as_mut()
-            .expect("No profile sections initialized. Was begin_profile_section called prior?");
-        let cycles = tsc - section.tsc_begin;
-        section.cycles_elapsed += cycles;
+    pub fn end_section_profile(&mut self, section_index: usize, cycles_elapsed: u64) {
+        let section = self.sections[section_index].as_mut().expect("No profile sections initialized. Was begin_profile_section called prior?");
+        section.cycles_elapsed += cycles_elapsed;
     }
 
     pub fn end_and_print_profile_info(&mut self, cpu_frequency_sample_millis: u64) {

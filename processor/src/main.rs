@@ -37,29 +37,23 @@ fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
 fn main() {
     init_profiler!();
 
-    profile! { "startup";
-        // TODO redo command line arg parsing so validation can still be optional and ms_to_wait for
-        // perf metrics is required
-        let mut args = env::args().skip(1);
-        if args.len() == 0 {
-            println!("usage <[] = required, () = optional>: [json input file] [cpu freq sample time millis] (validation file)");
-            process::exit(1);
-        }
-
-        profile! { "bleep";
-            let haversine_json_filename: String = args.next().unwrap();
-            let cpu_frequency_sample_millis: u64 = args.next().unwrap().parse().expect("expected millis as u64");
-            let haversine_validation_filename: Option<String> = args.next();
-            drop(args);
-        }
+    // TODO redo command line arg parsing so validation can still be optional and ms_to_wait for
+    // perf metrics is required
+    let mut args = env::args().skip(1);
+    if args.len() == 0 {
+        println!("usage <[] = required, () = optional>: [json input file] [cpu freq sample time millis] (validation file)");
+        process::exit(1);
     }
 
-    profile! { "input read";
-        let haversine_json = fs::read(&haversine_json_filename).unwrap_or_else(|err| panic!("failed to read {}: {}", haversine_json_filename, err));
-        let mut haversine_validation = haversine_validation_filename.map(|filename| {
-            io::BufReader::new(fs::File::open(&filename).unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename)))
-        });
-    }
+    let haversine_json_filename: String = args.next().unwrap();
+    let cpu_frequency_sample_millis: u64 = args.next().unwrap().parse().expect("expected millis as u64");
+    let haversine_validation_filename: Option<String> = args.next();
+    drop(args);
+
+    let haversine_json = fs::read(&haversine_json_filename).unwrap_or_else(|err| panic!("failed to read {}: {}", haversine_json_filename, err));
+    let mut haversine_validation = haversine_validation_filename.map(|filename| {
+        io::BufReader::new(fs::File::open(&filename).unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename)))
+    });
 
     profile! { "json parse";
         let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
@@ -90,16 +84,12 @@ fn main() {
         let average_haversine = total_haversine / (iterations as f64);
     }
 
-    profile! { "output";
-        println!("average: {}", average_haversine);
-        if let Some(haversine_validation) = &mut haversine_validation {
-            let expected_average_haversine = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
-            println!("expected: {}", expected_average_haversine);
-            println!("diff: {}", expected_average_haversine - average_haversine);
-            println!("invalid calculations: {}", validation_num_incorrect);
-        }
-
-        ; // see note on instrument_code in profiling_proc_macros.rs
+    println!("average: {}", average_haversine);
+    if let Some(haversine_validation) = &mut haversine_validation {
+        let expected_average_haversine = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
+        println!("expected: {}", expected_average_haversine);
+        println!("diff: {}", expected_average_haversine - average_haversine);
+        println!("invalid calculations: {}", validation_num_incorrect);
     }
 
     profile! { "json free";

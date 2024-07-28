@@ -149,6 +149,7 @@ impl<'a> JsonParser<'a> {
         Self::parse_value(self.buffer, &mut self.position)
     }
 
+    #[profile_function]
     fn parse_value(buffer: &'a [u8], position: &mut usize) -> Result<JsonElement, InvalidJsonError> {
         match Self::lex_next_token(buffer, position)? {
             Some(JsonToken { token_type: JsonTokenType::StringLiteral, value })
@@ -190,6 +191,7 @@ impl<'a> JsonParser<'a> {
 
     /// Recursively parses object elements.
     /// Every element in an object has an explicitly-defined label and value.
+    #[profile_function]
     fn parse_object(buffer: &'a [u8], position: &mut usize) -> Result<JsonElement, InvalidJsonError> {
         let mut object = JsonElement::default();
         let mut last_child: Option<Rc<JsonElement>> = None;
@@ -245,6 +247,7 @@ impl<'a> JsonParser<'a> {
     /// Array elements have implicitly-defined labels, starting at 0 and monotonically increasing
     /// per element, and explicitly-defined values.
     /// Array elements do NOT have to be of the same type (see JSON spec).
+    #[profile_function]
     fn parse_array(buffer: &'a [u8], position: &mut usize) -> Result<JsonElement, InvalidJsonError> {
         let mut array = JsonElement::default();
         let mut last_child: Option<Rc<JsonElement>> = None;

@@ -6,16 +6,14 @@ use std::mem;
 use core::arch::x86_64::_rdtsc;
 use profiling_proc_macros::__get_max_profile_sections;
 
-// TODO add a field to keep track of how deeply recursed we are. When beginning an autoprofile,
-// increment the counter and whenever we end the autoprofile, decrement. Then if we begin a new
-// autoprofile for a section and see that the section's counter is > 1, we know we've just recursed.
 struct ProfileSection {
     label: &'static str,
+    /// The total cycles elapsed, including children and recursive blocks.
     cycles_elapsed: u64,
+    /// Total cycles of children, including recursive blocks.
     child_cycles_elapsed: u64,
-    /// Tracks how many instances of this section we're currently profiling (> 1 indicates this
-    /// section has been invoked recursively)
-    active_count: u32,
+    /// Total cycles of JUST root sections (i.e. full time with children but without recursive blocks counted)
+    root_cycles_elapsed: u64,
     hits: u64,
 }
 
@@ -25,13 +23,13 @@ impl ProfileSection {
             label,
             cycles_elapsed: 0,
             child_cycles_elapsed: 0,
-            active_count: 0,
+            root_cycles_elapsed: 0,
             hits: 0,
         }
     }
 }
 
-pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64 }
+pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64, root_tsc: u64 }
 impl AutoProfile {
     pub fn new(section_label: &'static str, section_index: usize) -> Self {
         let section = match unsafe { &mut __GLOBAL_PROFILER.sections[section_index] } {
@@ -47,7 +45,7 @@ impl AutoProfile {
 
         section.hits += 1;
         let parent_index = unsafe { __GLOBAL_PROFILER.current_scope.replace(section_index) };
-        Self { section_index, parent_index, start_tsc: read_cpu_timer() }
+        Self { section_index, parent_index, start_tsc: read_cpu_timer(), root_tsc: section.root_cycles_elapsed }
     }
 }
 impl Drop for AutoProfile {
@@ -58,13 +56,14 @@ impl Drop for AutoProfile {
         let cycles_elapsed = read_cpu_timer() - self.start_tsc;
         let section = unsafe { __GLOBAL_PROFILER.sections[self.section_index].as_mut().expect("No profile sections initialized. Was begin_profile_section called prior?") };
         section.cycles_elapsed += cycles_elapsed;
+        // Inner nested blocks will clobber outer blocks, which is what we want here.
+        section.root_cycles_elapsed = self.root_tsc + cycles_elapsed;
         
+        unsafe { __GLOBAL_PROFILER.current_scope = self.parent_index };
         if let Some(parent_index) = self.parent_index {
             let parent_section = unsafe { __GLOBAL_PROFILER.sections[parent_index].as_mut().unwrap() };
             parent_section.child_cycles_elapsed += cycles_elapsed;
         }
-
-        unsafe { __GLOBAL_PROFILER.current_scope = self.parent_index };
     }
 }
 
@@ -111,26 +110,12 @@ impl __GlobalProfiler {
             if section.is_none() { break; }
             let section = section.as_ref().unwrap();
 
-            if section.child_cycles_elapsed == 0 {
-                println!(
-                    "{}: {} hits, {} cycles ({:.4}%)",
-                    section.label,
-                    section.hits,
-                    section.cycles_elapsed,
-                    section.cycles_elapsed as f64 / global_cycles as f64 * 100.0,
-                );
-            } else {
-                let exclusive_cycles = section.cycles_elapsed - section.child_cycles_elapsed;
-                println!(
-                    "{}: {} hits, {} cycles ({:.4}%), {} ({:.4}%) with children",
-                    section.label,
-                    section.hits,
-                    exclusive_cycles,
-                    (exclusive_cycles) as f64 / global_cycles as f64 * 100.0,
-                    section.cycles_elapsed,
-                    section.cycles_elapsed as f64 / global_cycles as f64 * 100.0,
-                );
+            let exclusive_cycles = section.cycles_elapsed - section.child_cycles_elapsed;
+            print!("{} [{}]: {} ({:.4}%", section.label, section.hits, exclusive_cycles, exclusive_cycles as f64 / global_cycles as f64 * 100.0);
+            if section.child_cycles_elapsed > 0 {
+                print!(", {:.4}% with children", section.root_cycles_elapsed as f64 / global_cycles as f64 * 100.0);
             }
+            println!(")");
         }
     }
 }

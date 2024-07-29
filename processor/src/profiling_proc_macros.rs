@@ -5,10 +5,26 @@ use std::{ str::FromStr, iter };
 const MAX_PROFILE_SECTIONS: usize = 4096;
 static mut PROFILE_COUNT: usize = 0;
 
-// TODO 2 options here:
-// 1) Make this way smarter (possibly using the syn crate) so that it can decide when to properly
-//    inject the manual drop at the end of the block.
-// 2) Force the user to specify if a manual drop is needed at the end.
+// TODO
+//
+// Update instrument_code so that it takes an argument specifying whether or not to include a
+// manual drop at the very end of the function.
+//
+// Update profile_function proc macro to NEVER include the manual drop at the end since the
+// AutoProfile will be dropped implicitly as soon as the function returns, causing it to go out of
+// scope.
+//
+// Update profile proc macro to ALWAYS include the manual drop at the end UNLESS some extra symbol
+// is tacked on to the header along with the label. That way the compiler will panic when a block
+// expects to return a value but actually returns () because of the manual drop.
+
+// STRETCH GOAL
+//
+// Figure out a way to bake initialization of the profile sections array in the global profiler at
+// compile time so that we only ever have as many profile sections as we actually need. Then we
+// can change the array type from [Option<ProfileSection>; MAX_PROFILE_SECTIONS] to
+// [ProfileSection; PROFILE_COUNT].
+
 fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> TokenStream {
     // FIXME probably big perf hit, but maybe okay since it's just compile-time.
     let code = code.collect::<Vec<TokenTree>>();
@@ -99,7 +115,7 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
                 panic!("expected string literal label but got {}", raw_literal);
             }
 
-            raw_literal.trim_matches('"').to_string()
+            raw_literal.to_string()
         },
         None => format!(r#""{function_name}""#),
         _ => panic!("Expected attribute to contain a string literal"),

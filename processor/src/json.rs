@@ -100,6 +100,12 @@ impl JsonElement {
 }
 
 impl Drop for JsonElement {
+    // FIXME CRITICAL
+    // This doesn't seem to be dropping all the values properly!
+    // Profiling consistently shows that the drop here only takes about 2k cycles!
+    // Even with 1 million elements!
+    // TODO maybe just switch to using vectors to store children instead of this linked list stuff.
+    #[profile_function("dropping json")]
     fn drop(&mut self) {
         // It's going to be rare for JSON to be nested so deeply that it overflows the stack when
         // parsing or deallocating memory.

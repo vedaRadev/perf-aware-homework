@@ -92,9 +92,7 @@ fn main() {
         println!("invalid calculations: {}", validation_num_incorrect);
     }
 
-    profile! { "json free";
-        drop(object);
-    }
+    drop(object);
 
     println!();
     end_and_print_profile_info!(cpu_frequency_sample_millis);

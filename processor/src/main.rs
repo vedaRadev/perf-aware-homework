@@ -55,10 +55,7 @@ fn main() {
         io::BufReader::new(fs::File::open(&filename).unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename)))
     });
 
-    profile! { "json parse";
-        let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
-    }
-
+    let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
     drop(haversine_json);
 
     profile! { "sums";

@@ -8,12 +8,10 @@ use profiling_proc_macros::__get_max_profile_sections;
 
 struct ProfileSection {
     label: &'static str,
-    /// The total cycles elapsed, including children and recursive blocks.
-    cycles_elapsed: u64,
-    /// Total cycles of children, including recursive blocks.
-    child_cycles_elapsed: u64,
-    /// Total cycles of JUST root sections (i.e. full time with children but without recursive blocks counted)
-    root_cycles_elapsed: u64,
+    /// Cycles of just the root profile sections (i.e. without children, recursion)
+    exclusive_cycles: u64,
+    /// Cycles of root profile sections with children and recursion
+    inclusive_cycles: u64,
     hits: u64,
 }
 
@@ -21,9 +19,8 @@ impl ProfileSection {
     fn new(label: &'static str) -> Self {
         Self {
             label,
-            cycles_elapsed: 0,
-            child_cycles_elapsed: 0,
-            root_cycles_elapsed: 0,
+            exclusive_cycles: 0,
+            inclusive_cycles: 0,
             hits: 0,
         }
     }
@@ -45,7 +42,7 @@ impl AutoProfile {
 
         section.hits += 1;
         let parent_index = unsafe { __GLOBAL_PROFILER.current_scope.replace(section_index) };
-        Self { section_index, parent_index, start_tsc: read_cpu_timer(), root_tsc: section.root_cycles_elapsed }
+        Self { section_index, parent_index, start_tsc: read_cpu_timer(), root_tsc: section.inclusive_cycles }
     }
 }
 impl Drop for AutoProfile {
@@ -55,14 +52,14 @@ impl Drop for AutoProfile {
     fn drop(&mut self) {
         let cycles_elapsed = read_cpu_timer() - self.start_tsc;
         let section = unsafe { __GLOBAL_PROFILER.sections[self.section_index].as_mut().expect("No profile sections initialized. Was begin_profile_section called prior?") };
-        section.cycles_elapsed += cycles_elapsed;
         // Inner nested blocks will clobber outer blocks, which is what we want here.
-        section.root_cycles_elapsed = self.root_tsc + cycles_elapsed;
+        section.inclusive_cycles = self.root_tsc + cycles_elapsed;
+        section.exclusive_cycles = section.exclusive_cycles.wrapping_add(cycles_elapsed);
         
         unsafe { __GLOBAL_PROFILER.current_scope = self.parent_index };
         if let Some(parent_index) = self.parent_index {
             let parent_section = unsafe { __GLOBAL_PROFILER.sections[parent_index].as_mut().unwrap() };
-            parent_section.child_cycles_elapsed += cycles_elapsed;
+            parent_section.exclusive_cycles = parent_section.exclusive_cycles.wrapping_sub(cycles_elapsed);
         }
     }
 }
@@ -110,10 +107,9 @@ impl __GlobalProfiler {
             if section.is_none() { break; }
             let section = section.as_ref().unwrap();
 
-            let exclusive_cycles = section.cycles_elapsed - section.child_cycles_elapsed;
-            print!("{} [{}]: {} ({:.4}%", section.label, section.hits, exclusive_cycles, exclusive_cycles as f64 / global_cycles as f64 * 100.0);
-            if section.child_cycles_elapsed > 0 {
-                print!(", {:.4}% with children", section.root_cycles_elapsed as f64 / global_cycles as f64 * 100.0);
+            print!("{} [{}]: {} ({:.4}%", section.label, section.hits, section.exclusive_cycles, section.exclusive_cycles as f64 / global_cycles as f64 * 100.0);
+            if section.inclusive_cycles != section.exclusive_cycles {
+                print!(", {:.4}% with children", section.inclusive_cycles as f64 / global_cycles as f64 * 100.0);
             }
             println!(")");
         }

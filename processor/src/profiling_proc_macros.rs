@@ -70,26 +70,19 @@ pub fn profile(input: TokenStream) -> TokenStream {
     instrument_code(&section_label, token_tree_iterator, include_manual_drop)
 }
 
-// FIXME this may not work with visibility modifiers
 #[proc_macro_attribute]
 pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenStream {
     let mut attribute_token_tree = attribute.into_iter();
     let mut function_token_tree = function.into_iter().peekable();
 
-    // TODO do we need to be collecting and emitting these with the rest of the instrumented code?
-    // advance the token tree iterator past other attributes
-    while matches!(function_token_tree.peek(), Some(TokenTree::Punct(punct)) if punct.to_string() == "#") {
-        function_token_tree.next(); // skip "#"
-        function_token_tree.next(); // skip the attribute group [ ... ]
+    // All the stuff before the "fn" identifier, including other attributes, the visibility
+    // modifier, etc.
+    let mut function_decl_prelude: Vec<TokenTree> = Vec::with_capacity(64);
+    while !matches!(function_token_tree.peek(), Some(TokenTree::Ident(ident)) if ident.to_string() == "fn") {
+        function_decl_prelude.push(function_token_tree.next().unwrap());
     }
 
-    assert!(
-        matches!(function_token_tree.next(), Some(TokenTree::Ident(ident)) if ident.to_string() == "fn"),
-        "This attribute proc macro can only be attached to functions"
-    );
-
-    // At this point we've already checked the first token in the function ("fn"), so the next
-    // token MUST be the function name.
+    function_token_tree.next(); // skip past "fn"
     let function_name = function_token_tree.next().expect("expected function name");
     let mut function_signature: Vec<TokenTree> = Vec::with_capacity(32);
     while !matches!(function_token_tree.peek(), Some(TokenTree::Group(group)) if matches!(group.delimiter(), Delimiter::Brace)) {
@@ -117,6 +110,7 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
     };
 
     let mut instrumented = TokenStream::new();
+    instrumented.extend(function_decl_prelude);
     instrumented.extend(TokenStream::from_str("fn"));
     instrumented.extend(iter::once(function_name));
     instrumented.extend(function_signature);

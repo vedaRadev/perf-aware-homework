@@ -5,19 +5,6 @@ use std::{ str::FromStr, iter };
 const MAX_PROFILE_SECTIONS: usize = 4096;
 static mut PROFILE_COUNT: usize = 0;
 
-// TODO
-//
-// Update instrument_code so that it takes an argument specifying whether or not to include a
-// manual drop at the very end of the function.
-//
-// Update profile_function proc macro to NEVER include the manual drop at the end since the
-// AutoProfile will be dropped implicitly as soon as the function returns, causing it to go out of
-// scope.
-//
-// Update profile proc macro to ALWAYS include the manual drop at the end UNLESS some extra symbol
-// is tacked on to the header along with the label. That way the compiler will panic when a block
-// expects to return a value but actually returns () because of the manual drop.
-
 // STRETCH GOAL
 //
 // Figure out a way to bake initialization of the profile sections array in the global profiler at
@@ -25,17 +12,8 @@ static mut PROFILE_COUNT: usize = 0;
 // can change the array type from [Option<ProfileSection>; MAX_PROFILE_SECTIONS] to
 // [ProfileSection; PROFILE_COUNT].
 
-fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> TokenStream {
-    // FIXME probably big perf hit, but maybe okay since it's just compile-time.
-    let code = code.collect::<Vec<TokenTree>>();
-    if code.is_empty() {
-        panic!("Empty profile section");
-    }
-
-    // FIXME hate this
-    let ends_with_semicolon = code[code.len() - 1].to_string() == ";";
-    let ends_with_profile_macro = code[code.len() - 3].to_string() == "profile" && code[code.len() - 2].to_string() == "!";
-
+fn instrument_code<T>(label: &str, code: T, include_manual_drop: bool) -> TokenStream
+where T: Iterator<Item = proc_macro::TokenTree> {
     let index = unsafe { PROFILE_COUNT };
     unsafe { PROFILE_COUNT += 1 };
     if unsafe { PROFILE_COUNT } >= MAX_PROFILE_SECTIONS {
@@ -50,7 +28,7 @@ fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> Tok
     let mut instrumented_code = TokenStream::new();
     instrumented_code.extend(profile_section_begin);
     instrumented_code.extend(code);
-    if ends_with_semicolon || ends_with_profile_macro {
+    if include_manual_drop {
         instrumented_code.extend(TokenStream::from_str(format!("drop({autoprofile_varname});").as_str()));
     }
 
@@ -61,24 +39,35 @@ fn instrument_code(label: &str, code: proc_macro::token_stream::IntoIter) -> Tok
 pub fn profile(input: TokenStream) -> TokenStream {
     #![allow(unused_variables)]
 
-    let mut token_tree_iterator = input.into_iter();
-    let section_label = match (token_tree_iterator.next(), token_tree_iterator.next()) {
-        (Some(TokenTree::Literal(literal)), Some(TokenTree::Punct(punct))) => {
+    let mut token_tree_iterator = input.into_iter().peekable();
+    let section_label = match token_tree_iterator.next() {
+        Some(TokenTree::Literal(literal)) => {
             let raw_literal = format!("{literal}");
             if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
                 panic!("expected string literal label but got {}", raw_literal);
             }
 
-            if punct.as_char() != ';' {
-                panic!("expected semicolon (;) delimiter after label");
-            }
-
             raw_literal
         },
-        _ => panic!("invalid macro invocation! expected \"str_lit; exprs...\""),
+        _ => panic!("expected string literal label")
     };
 
-    instrument_code(&section_label, token_tree_iterator)
+    let include_manual_drop = match (token_tree_iterator.next(), token_tree_iterator.peek()) {
+        (Some(TokenTree::Ident(ident)), Some(TokenTree::Punct(punct))) if punct.as_char() == ';' => {
+            // we only peeked to the punct so advanced the token tree iterator
+            token_tree_iterator.next();
+            if ident.to_string() != "no_manual_drop" {
+                panic!("unrecognized identifier, expected 'no_manual_drop'");
+            }
+
+            false
+        },
+        (Some(TokenTree::Punct(punct)), _) if punct.as_char() == ';' => true,
+
+        _ => panic!("expected ident 'no_manual_drop' and/or semicolon")
+    };
+
+    instrument_code(&section_label, token_tree_iterator, include_manual_drop)
 }
 
 // FIXME this may not work with visibility modifiers
@@ -123,7 +112,7 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
 
     // The last token in the function token stream should be a group containing the function body.
     let instrumented_function_body = match function_body {
-        TokenTree::Group(group) => instrument_code(&section_label, group.stream().into_iter()),
+        TokenTree::Group(group) => instrument_code(&section_label, group.stream().into_iter(), false),
         _ => panic!("expected a group for the function body but got something else"),
     };
 

@@ -14,6 +14,8 @@ static mut PROFILE_COUNT: usize = 0;
 
 fn instrument_code<T>(label: &str, code: T, include_manual_drop: bool) -> TokenStream
 where T: Iterator<Item = proc_macro::TokenTree> {
+    if label.trim_matches('"').is_empty() { panic!("empty string labels not allowed"); }
+
     let index = unsafe { PROFILE_COUNT };
     unsafe { PROFILE_COUNT += 1 };
     if unsafe { PROFILE_COUNT } >= MAX_PROFILE_SECTIONS {
@@ -42,7 +44,7 @@ pub fn profile(input: TokenStream) -> TokenStream {
     let mut token_tree_iterator = input.into_iter().peekable();
     let section_label = match token_tree_iterator.next() {
         Some(TokenTree::Literal(literal)) => {
-            let raw_literal = format!("{literal}");
+            let raw_literal = literal.to_string();
             if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
                 panic!("expected string literal label but got {}", raw_literal);
             }
@@ -92,7 +94,7 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
 
     let section_label = match attribute_token_tree.next() {
         Some(TokenTree::Literal(literal)) => {
-            let raw_literal = format!("{literal}");
+            let raw_literal = literal.to_string();
             if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
                 panic!("expected string literal label but got {}", raw_literal);
             }

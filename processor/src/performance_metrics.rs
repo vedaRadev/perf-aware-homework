@@ -4,8 +4,11 @@ pub use profiling_proc_macros::{ profile, profile_function };
 use winapi::um::profileapi;
 use std::mem;
 use core::arch::x86_64::_rdtsc;
+
+#[cfg(feature = "profiling")]
 use profiling_proc_macros::__get_max_profile_sections;
 
+#[cfg(feature = "profiling")]
 struct ProfileSection {
     label: &'static str,
     /// Cycles of just the root profile sections (i.e. without children, recursion)
@@ -15,8 +18,8 @@ struct ProfileSection {
     hits: u64,
 }
 
+#[cfg(feature = "profiling")]
 impl ProfileSection {
-    #[cfg(feature = "profiling")]
     fn new(label: &'static str) -> Self {
         Self {
             label,
@@ -27,9 +30,11 @@ impl ProfileSection {
     }
 }
 
+#[cfg(feature = "profiling")]
 pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64, root_tsc: u64 }
+
+#[cfg(feature = "profiling")]
 impl AutoProfile {
-    #[cfg(feature = "profiling")]
     pub fn new(section_label: &'static str, section_index: usize) -> Self {
         let section = match unsafe { &mut __GLOBAL_PROFILER.sections[section_index] } {
             Some(section) => section,
@@ -47,6 +52,8 @@ impl AutoProfile {
         Self { section_index, parent_index, start_tsc: read_cpu_timer(), root_tsc: section.inclusive_cycles }
     }
 }
+
+#[cfg(feature = "profiling")]
 impl Drop for AutoProfile {
     // Helps guard against early returns in profile sections.
     // If an early return is triggered in a profile section, the instance of AutoProfile
@@ -71,10 +78,14 @@ impl Drop for AutoProfile {
 pub struct __GlobalProfiler {
     global_cycles_begin: u64,
     global_cycles_end: u64,
+
     // We should never get an out-of-bounds error because the max profile sections invariant is
     // enforced at compile time by the proc macros, and users should NOT be interacting with the
     // global profiler except through the provided macros.
+    #[cfg(feature = "profiling")]
     sections: [Option<ProfileSection>; __get_max_profile_sections!()],
+
+    #[cfg(feature = "profiling")]
     current_scope: Option<usize>,
 }
 
@@ -83,7 +94,11 @@ impl __GlobalProfiler {
         Self {
             global_cycles_begin: 0,
             global_cycles_end: 0,
+
+            #[cfg(feature = "profiling")]
             sections: [ const { None }; __get_max_profile_sections!() ],
+
+            #[cfg(feature = "profiling")]
             current_scope: None,
         }
     }
@@ -105,6 +120,7 @@ impl __GlobalProfiler {
             cpu_frequency,
         );
 
+        #[cfg(feature = "profiling")]
         for section in &self.sections {
             if section.is_none() { break; }
             let section = section.as_ref().unwrap();

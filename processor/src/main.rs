@@ -89,8 +89,10 @@ fn main() {
         println!("invalid calculations: {}", validation_num_incorrect);
     }
 
-    drop(object);
-    drop(haversine_pairs);
+    profile! { "free json";
+        drop(object);
+        drop(haversine_pairs);
+    }
 
     println!();
     end_and_print_profile_info!(cpu_frequency_sample_millis);

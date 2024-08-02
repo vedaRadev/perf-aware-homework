@@ -1,2 +1,6 @@
 **/target
 /.vscode
+rust-analyzer.json
+haversine_pairs.json
+haversine_answers.f64
+**/*.rdbg

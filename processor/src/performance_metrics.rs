@@ -16,6 +16,7 @@ struct ProfileSection {
 }
 
 impl ProfileSection {
+    #[cfg(feature = "profiling")]
     fn new(label: &'static str) -> Self {
         Self {
             label,
@@ -28,6 +29,7 @@ impl ProfileSection {
 
 pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64, root_tsc: u64 }
 impl AutoProfile {
+    #[cfg(feature = "profiling")]
     pub fn new(section_label: &'static str, section_index: usize) -> Self {
         let section = match unsafe { &mut __GLOBAL_PROFILER.sections[section_index] } {
             Some(section) => section,

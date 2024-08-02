@@ -1,9 +1,12 @@
 extern crate proc_macro;
-use proc_macro::{ Group, Delimiter, TokenStream, TokenTree };
+use proc_macro::{ TokenStream, TokenTree };
+
+#[cfg(feature = "profiling")]
+use proc_macro::{ Group, Delimiter };
+#[cfg(feature = "profiling")]
 use std::{ str::FromStr, iter };
 
-const MAX_PROFILE_SECTIONS: usize = 4096;
-static mut PROFILE_COUNT: usize = 0;
+const MAX_PROFILE_SECTIONS: usize = if cfg!(feature = "profiling") { 4096 } else { 0 };
 
 // STRETCH GOAL
 //
@@ -12,12 +15,16 @@ static mut PROFILE_COUNT: usize = 0;
 // can change the array type from [Option<ProfileSection>; MAX_PROFILE_SECTIONS] to
 // [ProfileSection; PROFILE_COUNT].
 
+#[cfg(feature = "profiling")]
 fn instrument_code<T>(label: &str, code: T, include_manual_drop: bool) -> TokenStream
 where T: Iterator<Item = proc_macro::TokenTree> {
+    static mut PROFILE_COUNT: usize = 0;
+
     if label.trim_matches('"').is_empty() { panic!("empty string labels not allowed"); }
 
     let index = unsafe { PROFILE_COUNT };
     unsafe { PROFILE_COUNT += 1 };
+
     if unsafe { PROFILE_COUNT } >= MAX_PROFILE_SECTIONS {
         panic!("Exceeded max profile section count of {}", MAX_PROFILE_SECTIONS);
     }
@@ -37,10 +44,9 @@ where T: Iterator<Item = proc_macro::TokenTree> {
     instrumented_code
 }
 
+#[cfg(feature = "profiling")]
 #[proc_macro]
 pub fn profile(input: TokenStream) -> TokenStream {
-    #![allow(unused_variables)]
-
     let mut token_tree_iterator = input.into_iter().peekable();
     let section_label = match token_tree_iterator.next() {
         Some(TokenTree::Literal(literal)) => {
@@ -72,6 +78,11 @@ pub fn profile(input: TokenStream) -> TokenStream {
     instrument_code(&section_label, token_tree_iterator, include_manual_drop)
 }
 
+#[cfg(not(feature = "profiling"))]
+#[proc_macro]
+pub fn profile(input: TokenStream) -> TokenStream { input }
+
+#[cfg(feature = "profiling")]
 #[proc_macro_attribute]
 pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenStream {
     let mut attribute_token_tree = attribute.into_iter();
@@ -120,6 +131,10 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
 
     instrumented
 }
+
+#[cfg(not(feature = "profiling"))]
+#[proc_macro_attribute]
+pub fn profile_function(_attribute: TokenStream, function: TokenStream) -> TokenStream { function }
 
 #[proc_macro]
 pub fn __get_max_profile_sections(_: TokenStream) -> TokenStream {

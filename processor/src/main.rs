@@ -34,6 +34,10 @@ fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
     Ok(unsafe { mem::transmute::<[u8; 8], f64>(value) })
 }
 
+// struct Point(f64, f64);
+// struct HaversinePair(Point, Point);
+type HaversinePair = ((f64, f64), (f64, f64));
+
 fn main() {
     init_profiler!();
 
@@ -55,20 +59,37 @@ fn main() {
         io::BufReader::new(fs::File::open(&filename).unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename)))
     });
 
-    let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
-    drop(haversine_json);
 
+    profile! { "parse haversine pairs";
+        let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
+        drop(haversine_json);
+
+        profile! { "convert values";
+            let haversine_pairs = object
+                .get_element("pairs").expect("expected top-level \"pairs\" object")
+                .iter()
+                .map(|pair| {
+                    let x0 = pair.get_element_value_as::<f64>("x0").unwrap().unwrap();
+                    let y0 = pair.get_element_value_as::<f64>("y0").unwrap().unwrap();
+                    let x1 = pair.get_element_value_as::<f64>("x1").unwrap().unwrap();
+                    let y1 = pair.get_element_value_as::<f64>("y1").unwrap().unwrap();
+                    ((x0, y0), (x1, y1))
+                })
+                .collect::<Vec<HaversinePair>>();
+        }
+
+        profile! { "free json";
+            drop(object);
+        }
+    }
+
+
+    let mut total_haversine: f64 = 0.0;
+    let mut iterations: usize = 0;
+    let mut validation_num_incorrect: usize = 0;
     profile! { "sums";
-        let haversine_pairs = object.get_element("pairs").expect("expected top-level \"pairs\" object");
-        let mut total_haversine: f64 = 0.0;
-        let mut iterations: usize = 0;
-        let mut validation_num_incorrect: usize = 0;
-        for pair in haversine_pairs.iter() {
-            let x0 = pair.get_element_value_as::<f64>("x0").unwrap().unwrap();
-            let y0 = pair.get_element_value_as::<f64>("y0").unwrap().unwrap();
-            let x1 = pair.get_element_value_as::<f64>("x1").unwrap().unwrap();
-            let y1 = pair.get_element_value_as::<f64>("y1").unwrap().unwrap();
-            let haversine_distance = calculate_haversine_distance(x0, y0, x1, y1, EARTH_RADIUS);
+        for((x0, y0), (x1, y1)) in haversine_pairs.iter() {
+            let haversine_distance = calculate_haversine_distance(*x0, *y0, *x1, *y1, EARTH_RADIUS);
             total_haversine += haversine_distance;
             iterations += 1;
             if let Some(haversine_validation) = &mut haversine_validation {
@@ -87,11 +108,6 @@ fn main() {
         println!("expected: {}", expected_average_haversine);
         println!("diff: {}", expected_average_haversine - average_haversine);
         println!("invalid calculations: {}", validation_num_incorrect);
-    }
-
-    profile! { "free json";
-        drop(object);
-        drop(haversine_pairs);
     }
 
     println!();

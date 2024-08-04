@@ -59,9 +59,8 @@ fn main() {
     }
 
     let mut haversine_validation = haversine_validation_filename.map(|filename| {
-        let file = fs::File::open(&filename)
-            .unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename));
-        io::BufReader::new(file)
+        fs::read(&filename)
+            .unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename))
     });
 
 
@@ -88,31 +87,27 @@ fn main() {
     }
 
     let mut total_haversine: f64 = 0.0;
-    let mut iterations: usize = 0;
-    let mut validation_num_incorrect: usize = 0;
     profile! { "sums" [ (std::mem::size_of::<HaversinePair>() * haversine_pairs.len()) as u64 ];
         for((x0, y0), (x1, y1)) in haversine_pairs.iter() {
             let haversine_distance = calculate_haversine_distance(*x0, *y0, *x1, *y1, EARTH_RADIUS);
             total_haversine += haversine_distance;
-            iterations += 1;
-            if let Some(haversine_validation) = &mut haversine_validation {
-                let expected_distance = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
-                if (haversine_distance - expected_distance).abs() > 0.000001 {
-                    validation_num_incorrect += 1;
-                }
-            }
         }
-        let average_haversine = total_haversine / (iterations as f64);
     }
+
+    let average_haversine = total_haversine / (haversine_pairs.len() as f64);
 
     println!("input size: {}", haversine_json.len());
     println!("pair count: {}", haversine_pairs.len());
     println!("average haversine: {}", average_haversine);
     if let Some(haversine_validation) = &mut haversine_validation {
-        let expected_average_haversine = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
+        let expected_average_haversine = unsafe {
+            let slice: [u8; 8] = haversine_validation[haversine_validation.len() - 8 ..]
+                .try_into().expect("failed to grab expected haversine average");
+            std::mem::transmute::<[u8; 8], f64>(slice)
+        };
+
         println!("\texpected: {}", expected_average_haversine);
         println!("\tdiff: {}", expected_average_haversine - average_haversine);
-        println!("\tinvalid calculations: {}", validation_num_incorrect);
     }
 
     end_and_print_profile_info!(cpu_frequency_sample_millis);

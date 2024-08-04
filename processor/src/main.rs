@@ -5,7 +5,6 @@ use std::{
     env,
     process,
     fs,
-    io,
     mem,
     os::windows::fs::MetadataExt,
 };
@@ -26,13 +25,6 @@ fn calculate_haversine_distance(x0: Degrees, y0: Degrees, x1: Degrees, y1: Degre
     let c = a.sqrt().asin() * 2.0;
 
     radius * c
-}
-
-#[inline(always)]
-fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
-    let mut value = [0u8; 8];
-    buf.read_exact(&mut value)?;
-    Ok(unsafe { mem::transmute::<[u8; 8], f64>(value) })
 }
 
 type HaversinePair = ((f64, f64), (f64, f64));
@@ -87,7 +79,7 @@ fn main() {
     }
 
     let mut total_haversine: f64 = 0.0;
-    profile! { "sums" [ (std::mem::size_of::<HaversinePair>() * haversine_pairs.len()) as u64 ];
+    profile! { "sums" [ (mem::size_of::<HaversinePair>() * haversine_pairs.len()) as u64 ];
         for((x0, y0), (x1, y1)) in haversine_pairs.iter() {
             let haversine_distance = calculate_haversine_distance(*x0, *y0, *x1, *y1, EARTH_RADIUS);
             total_haversine += haversine_distance;
@@ -103,7 +95,7 @@ fn main() {
         let expected_average_haversine = unsafe {
             let slice: [u8; 8] = haversine_validation[haversine_validation.len() - 8 ..]
                 .try_into().expect("failed to grab expected haversine average");
-            std::mem::transmute::<[u8; 8], f64>(slice)
+            mem::transmute::<[u8; 8], f64>(slice)
         };
 
         println!("\texpected: {}", expected_average_haversine);

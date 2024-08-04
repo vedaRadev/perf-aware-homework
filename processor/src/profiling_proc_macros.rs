@@ -1,7 +1,7 @@
-use proc_macro::{ TokenTree, TokenStream };
+use proc_macro::{ TokenTree, TokenStream, Literal };
 
 #[cfg(feature = "profiling")]
-use proc_macro::{ Group, Literal, Delimiter };
+use proc_macro::{ Group, Delimiter };
 #[cfg(feature = "profiling")]
 use std::{ str::FromStr, iter };
 
@@ -46,7 +46,6 @@ where T: Iterator<Item = proc_macro::TokenTree> {
     instrumented_code
 }
 
-#[cfg(feature = "profiling")]
 fn parse_label(literal: Literal) -> String {
     let raw_literal = literal.to_string();
     if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
@@ -56,16 +55,17 @@ fn parse_label(literal: Literal) -> String {
     raw_literal
 }
 
-#[cfg(feature = "profiling")]
 #[proc_macro]
 pub fn profile(input: TokenStream) -> TokenStream {
     let mut token_tree_iterator = input.into_iter().peekable();
 
+    #[allow(unused_variables)]
     let section_label = match token_tree_iterator.next() {
         Some(TokenTree::Literal(literal)) => parse_label(literal),
         _ => panic!("Expected string literal label")
     };
 
+    #[allow(unused_variables)]
     // TODO find a better way to express this
     let bytes_expression = if matches!(token_tree_iterator.peek(), Some(TokenTree::Group(_))) {
         // Don't like having to match since we know for sure it's a group
@@ -77,6 +77,7 @@ pub fn profile(input: TokenStream) -> TokenStream {
         None
     };
 
+    #[allow(unused_variables)]
     let include_manual_drop = match (token_tree_iterator.next(), token_tree_iterator.peek()) {
         (Some(TokenTree::Ident(ident)), Some(TokenTree::Punct(punct))) if punct.as_char() == ';' => {
             // we only peeked to the punct so advanced the token tree iterator
@@ -93,12 +94,17 @@ pub fn profile(input: TokenStream) -> TokenStream {
     };
 
     let code = token_tree_iterator;
+
+    #[cfg(not(feature = "profiling"))]
+    {
+        let mut code_ts = TokenStream::new();
+        code_ts.extend(code);
+        code_ts
+    }
+
+    #[cfg(feature = "profiling")]
     instrument_code(&section_label, bytes_expression, code, include_manual_drop)
 }
-
-#[cfg(not(feature = "profiling"))]
-#[proc_macro]
-pub fn profile(input: TokenStream) -> TokenStream { input }
 
 #[cfg(feature = "profiling")]
 #[proc_macro_attribute]

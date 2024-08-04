@@ -6,8 +6,10 @@ use std::{
     process,
     fs,
     mem,
-    os::windows::fs::MetadataExt,
 };
+
+#[cfg(feature = "profiling")]
+use std::os::windows::fs::MetadataExt;
 
 use json::JsonParser;
 use performance_metrics::{ init_profiler, profile, end_and_print_profile_info };

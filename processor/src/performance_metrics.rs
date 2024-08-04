@@ -118,7 +118,7 @@ impl __GlobalProfiler {
 
         let cpu_frequency = get_cpu_frequency_estimate(cpu_frequency_sample_millis);
         println!(
-            "Total time profiled: {:.2} ms, {} cycles (cpu freq estimate: {})",
+            "\nTotal time profiled: {:.2} ms, {} cycles (cpu freq estimate: {})",
             global_cycles as f64 / cpu_frequency as f64 * 1000.0,
             global_cycles,
             cpu_frequency,
@@ -129,7 +129,7 @@ impl __GlobalProfiler {
             if section.is_none() { break; }
             let section = section.as_ref().unwrap();
 
-            print!("{} [{}]: {} ({:.4}%", section.label, section.hits, section.exclusive_cycles, section.exclusive_cycles as f64 / global_cycles as f64 * 100.0);
+            print!("\t{} [{}]: {} ({:.4}%", section.label, section.hits, section.exclusive_cycles, section.exclusive_cycles as f64 / global_cycles as f64 * 100.0);
             if section.inclusive_cycles != section.exclusive_cycles {
                 print!(", {:.4}% with children", section.inclusive_cycles as f64 / global_cycles as f64 * 100.0);
             }

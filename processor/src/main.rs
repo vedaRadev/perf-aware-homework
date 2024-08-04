@@ -105,18 +105,15 @@ fn main() {
         let average_haversine = total_haversine / (iterations as f64);
     }
 
-
     println!("input size: {}", haversine_json.len());
-    println!("{} pairs", haversine_pairs.len());
-    println!();
-    println!("average: {}", average_haversine);
+    println!("pair count: {}", haversine_pairs.len());
+    println!("average haversine: {}", average_haversine);
     if let Some(haversine_validation) = &mut haversine_validation {
         let expected_average_haversine = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));
-        println!("expected: {}", expected_average_haversine);
-        println!("diff: {}", expected_average_haversine - average_haversine);
-        println!("invalid calculations: {}", validation_num_incorrect);
+        println!("\texpected: {}", expected_average_haversine);
+        println!("\tdiff: {}", expected_average_haversine - average_haversine);
+        println!("\tinvalid calculations: {}", validation_num_incorrect);
     }
 
-    println!();
     end_and_print_profile_info!(cpu_frequency_sample_millis);
 }

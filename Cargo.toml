@@ -11,8 +11,11 @@ description = "Coursework for Casey Muratori's 'Performance Aware Programming' c
 # improvements but I'm not then it could be that the rust compiler's
 # optimizations are outdoing my own. In that case, just set opt-level to 0 and
 # use the shitty non-compiler-optimized version.
+#
+# opt-level 1 seems to vectorize loops which I don't think we want at this point
+# so just use opt-level 0 for now.
 [profile.dev.package.processor]
-opt-level = 1
+opt-level = 0
 debug = true
 
 [profile.dev.package.generator]

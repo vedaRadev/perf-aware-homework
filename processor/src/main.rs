@@ -7,6 +7,7 @@ use std::{
     fs,
     io,
     mem,
+    os::windows::fs::MetadataExt,
 };
 
 use json::JsonParser;
@@ -34,8 +35,6 @@ fn read_f64<T: io::Read>(buf: &mut T) -> Result<f64, io::Error> {
     Ok(unsafe { mem::transmute::<[u8; 8], f64>(value) })
 }
 
-// struct Point(f64, f64);
-// struct HaversinePair(Point, Point);
 type HaversinePair = ((f64, f64), (f64, f64));
 
 fn main() {
@@ -54,18 +53,23 @@ fn main() {
     let haversine_validation_filename: Option<String> = args.next();
     drop(args);
 
-    let haversine_json = fs::read(&haversine_json_filename).unwrap_or_else(|err| panic!("failed to read {}: {}", haversine_json_filename, err));
+    profile! { "file read" [ fs::metadata(&haversine_json_filename).expect("no metadata for file").file_size() ];
+        let haversine_json = fs::read(&haversine_json_filename)
+            .unwrap_or_else(|err| panic!("failed to read {}: {}", haversine_json_filename, err));
+    }
+
     let mut haversine_validation = haversine_validation_filename.map(|filename| {
-        io::BufReader::new(fs::File::open(&filename).unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename)))
+        let file = fs::File::open(&filename)
+            .unwrap_or_else(|err| panic!("failed to read {}: {}", err, filename));
+        io::BufReader::new(file)
     });
 
 
     profile! { "parse haversine pairs";
         let object = JsonParser::new(&haversine_json).parse().unwrap_or_else(|err| panic!("{}", err));
-        drop(haversine_json);
 
         profile! { "convert values";
-            let haversine_pairs = object
+            let haversine_pairs: Vec<HaversinePair> = object
                 .get_element("pairs").expect("expected top-level \"pairs\" object")
                 .iter()
                 .map(|pair| {
@@ -75,7 +79,7 @@ fn main() {
                     let y1 = pair.get_element_value_as::<f64>("y1").unwrap().unwrap();
                     ((x0, y0), (x1, y1))
                 })
-                .collect::<Vec<HaversinePair>>();
+                .collect();
         }
 
         profile! { "free json";
@@ -83,11 +87,10 @@ fn main() {
         }
     }
 
-
     let mut total_haversine: f64 = 0.0;
     let mut iterations: usize = 0;
     let mut validation_num_incorrect: usize = 0;
-    profile! { "sums";
+    profile! { "sums" [ (std::mem::size_of::<HaversinePair>() * haversine_pairs.len()) as u64 ];
         for((x0, y0), (x1, y1)) in haversine_pairs.iter() {
             let haversine_distance = calculate_haversine_distance(*x0, *y0, *x1, *y1, EARTH_RADIUS);
             total_haversine += haversine_distance;
@@ -102,6 +105,10 @@ fn main() {
         let average_haversine = total_haversine / (iterations as f64);
     }
 
+
+    println!("input size: {}", haversine_json.len());
+    println!("{} pairs", haversine_pairs.len());
+    println!();
     println!("average: {}", average_haversine);
     if let Some(haversine_validation) = &mut haversine_validation {
         let expected_average_haversine = read_f64(haversine_validation).unwrap_or_else(|err| panic!("failed to read f64 from validation file: {}", err));

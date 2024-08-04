@@ -15,6 +15,7 @@ struct ProfileSection {
     exclusive_cycles: u64,
     /// Cycles of root profile sections with children and recursion
     inclusive_cycles: u64,
+    bytes_processed: u64,
     hits: u64,
 }
 
@@ -25,6 +26,7 @@ impl ProfileSection {
             label,
             exclusive_cycles: 0,
             inclusive_cycles: 0,
+            bytes_processed: 0,
             hits: 0,
         }
     }
@@ -35,7 +37,7 @@ pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, star
 
 #[cfg(feature = "profiling")]
 impl AutoProfile {
-    pub fn new(section_label: &'static str, section_index: usize) -> Self {
+    pub fn new(section_label: &'static str, section_index: usize, byte_count: u64) -> Self {
         let section = match unsafe { &mut __GLOBAL_PROFILER.sections[section_index] } {
             Some(section) => section,
             None => {
@@ -48,6 +50,8 @@ impl AutoProfile {
         };
 
         section.hits += 1;
+        section.bytes_processed += byte_count;
+
         let parent_index = unsafe { __GLOBAL_PROFILER.current_scope.replace(section_index) };
         Self { section_index, parent_index, start_tsc: read_cpu_timer(), root_tsc: section.inclusive_cycles }
     }
@@ -129,7 +133,21 @@ impl __GlobalProfiler {
             if section.inclusive_cycles != section.exclusive_cycles {
                 print!(", {:.4}% with children", section.inclusive_cycles as f64 / global_cycles as f64 * 100.0);
             }
-            println!(")");
+            print!(")");
+
+            if section.bytes_processed > 0 {
+                const MEGABYTE: u64 = 1024 * 1024;
+                const GIGABYTE: u64 = MEGABYTE * 1024;
+
+                let seconds = section.inclusive_cycles as f64 / cpu_frequency as f64;
+                let bytes_per_second = section.bytes_processed as f64 / seconds;
+                let megabytes = section.bytes_processed as f64 / MEGABYTE as f64;
+                let gigabytes_per_second = bytes_per_second / GIGABYTE as f64;
+
+                print!(" {:.3}mb at {:.2}gb/s", megabytes, gigabytes_per_second);
+            }
+
+            println!();
         }
     }
 }

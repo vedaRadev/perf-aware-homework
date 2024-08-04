@@ -1,8 +1,7 @@
-extern crate proc_macro;
-use proc_macro::{ TokenStream, TokenTree };
+use proc_macro::{ TokenTree, TokenStream };
 
 #[cfg(feature = "profiling")]
-use proc_macro::{ Group, Delimiter };
+use proc_macro::{ Group, Literal, Delimiter };
 #[cfg(feature = "profiling")]
 use std::{ str::FromStr, iter };
 
@@ -16,7 +15,8 @@ const MAX_PROFILE_SECTIONS: usize = if cfg!(feature = "profiling") { 4096 } else
 // [ProfileSection; PROFILE_COUNT].
 
 #[cfg(feature = "profiling")]
-fn instrument_code<T>(label: &str, code: T, include_manual_drop: bool) -> TokenStream
+// Note sure if I really want bytes_expression to be Option<TokenStream>
+fn instrument_code<T>(label: &str, bytes_expression: Option<TokenStream>, code: T, include_manual_drop: bool) -> TokenStream
 where T: Iterator<Item = proc_macro::TokenTree> {
     static mut PROFILE_COUNT: usize = 0;
 
@@ -30,9 +30,11 @@ where T: Iterator<Item = proc_macro::TokenTree> {
     }
 
     let autoprofile_varname = format!("__auto_profile_{index}");
-    let profile_section_begin = TokenStream::from_str(format!(r#"
-        let {autoprofile_varname} = crate::performance_metrics::AutoProfile::new({label}, {index});
-    "#).as_str());
+    let profile_section_begin = TokenStream::from_str(format!(
+        r#"let {autoprofile_varname} = crate::performance_metrics::AutoProfile::new({label}, {index}, {});"#,
+        if bytes_expression.is_some() { bytes_expression.unwrap().to_string() } else { "0".to_string() }
+    ).as_str());
+
 
     let mut instrumented_code = TokenStream::new();
     instrumented_code.extend(profile_section_begin);
@@ -45,19 +47,34 @@ where T: Iterator<Item = proc_macro::TokenTree> {
 }
 
 #[cfg(feature = "profiling")]
+fn parse_label(literal: Literal) -> String {
+    let raw_literal = literal.to_string();
+    if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
+        panic!("expected string literal label but got {}", raw_literal);
+    }
+
+    raw_literal
+}
+
+#[cfg(feature = "profiling")]
 #[proc_macro]
 pub fn profile(input: TokenStream) -> TokenStream {
     let mut token_tree_iterator = input.into_iter().peekable();
-    let section_label = match token_tree_iterator.next() {
-        Some(TokenTree::Literal(literal)) => {
-            let raw_literal = literal.to_string();
-            if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
-                panic!("expected string literal label but got {}", raw_literal);
-            }
 
-            raw_literal
-        },
-        _ => panic!("expected string literal label")
+    let section_label = match token_tree_iterator.next() {
+        Some(TokenTree::Literal(literal)) => parse_label(literal),
+        _ => panic!("Expected string literal label")
+    };
+
+    // TODO find a better way to express this
+    let bytes_expression = if matches!(token_tree_iterator.peek(), Some(TokenTree::Group(_))) {
+        // Don't like having to match since we know for sure it's a group
+        match token_tree_iterator.next() {
+            Some(TokenTree::Group(group)) => Some(group.stream()),
+            _ => unreachable!()
+        }
+    } else {
+        None
     };
 
     let include_manual_drop = match (token_tree_iterator.next(), token_tree_iterator.peek()) {
@@ -75,7 +92,8 @@ pub fn profile(input: TokenStream) -> TokenStream {
         _ => panic!("expected ident 'no_manual_drop' and/or semicolon")
     };
 
-    instrument_code(&section_label, token_tree_iterator, include_manual_drop)
+    let code = token_tree_iterator;
+    instrument_code(&section_label, bytes_expression, code, include_manual_drop)
 }
 
 #[cfg(not(feature = "profiling"))]
@@ -104,21 +122,24 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
     let function_body = function_token_tree.next().expect("expected function body");
 
     let section_label = match attribute_token_tree.next() {
-        Some(TokenTree::Literal(literal)) => {
-            let raw_literal = literal.to_string();
-            if !(raw_literal.starts_with('"') || raw_literal.starts_with("r#\"")) {
-                panic!("expected string literal label but got {}", raw_literal);
-            }
-
-            raw_literal.to_string()
-        },
+        Some(TokenTree::Literal(literal)) => parse_label(literal),
         None => format!(r#""{function_name}""#),
         _ => panic!("Expected attribute to contain a string literal"),
     };
 
+    let bytes_expression = match attribute_token_tree.next() {
+        Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
+            let mut ts = TokenStream::new();
+            ts.extend(attribute_token_tree);
+            Some(ts)
+        },
+        Some(_) => panic!("expected comma (,) then bytes_expression"),
+        None => None,
+    };
+
     // The last token in the function token stream should be a group containing the function body.
     let instrumented_function_body = match function_body {
-        TokenTree::Group(group) => instrument_code(&section_label, group.stream().into_iter(), false),
+        TokenTree::Group(group) => instrument_code(&section_label, bytes_expression, group.stream().into_iter(), false),
         _ => panic!("expected a group for the function body but got something else"),
     };
 

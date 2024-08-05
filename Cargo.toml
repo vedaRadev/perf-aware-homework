@@ -1,5 +1,5 @@
 [workspace]
-members = ["generator", "processor"]
+members = ["generator", "processor", "repetition_testing"]
 resolver = "2"
 
 [workspace.package]
@@ -7,14 +7,13 @@ version = "0.1.0"
 authors = ["Ryan Armstrong"]
 description = "Coursework for Casey Muratori's 'Performance Aware Programming' course."
 
-# If I get through most of part 3 and should be seeing major performance
-# improvements but I'm not then it could be that the rust compiler's
-# optimizations are outdoing my own. In that case, just set opt-level to 0 and
-# use the shitty non-compiler-optimized version.
-#
 # opt-level 1 seems to vectorize loops which I don't think we want at this point
 # so just use opt-level 0 for now.
 [profile.dev.package.processor]
+opt-level = 0
+debug = true
+
+[profile.dev.package.repetition_testing]
 opt-level = 0
 debug = true
 

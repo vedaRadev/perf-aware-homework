@@ -9,7 +9,7 @@ use core::arch::x86_64::_rdtsc;
 use profiling_proc_macros::__get_max_profile_sections;
 
 #[cfg(feature = "profiling")]
-struct ProfileSection {
+struct __ProfileSection {
     label: &'static str,
     /// Cycles of just the root profile sections (i.e. without children, recursion)
     exclusive_cycles: u64,
@@ -20,7 +20,7 @@ struct ProfileSection {
 }
 
 #[cfg(feature = "profiling")]
-impl ProfileSection {
+impl __ProfileSection {
     fn new(label: &'static str) -> Self {
         Self {
             label,
@@ -33,15 +33,15 @@ impl ProfileSection {
 }
 
 #[cfg(feature = "profiling")]
-pub struct AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64, root_tsc: u64 }
+pub struct __AutoProfile { section_index: usize, parent_index: Option<usize>, start_tsc: u64, root_tsc: u64 }
 
 #[cfg(feature = "profiling")]
-impl AutoProfile {
+impl __AutoProfile {
     pub fn new(section_label: &'static str, section_index: usize, byte_count: u64) -> Self {
         let section = match unsafe { &mut __GLOBAL_PROFILER.sections[section_index] } {
             Some(section) => section,
             None => {
-                let section = ProfileSection::new(section_label);
+                let section = __ProfileSection::new(section_label);
                 unsafe {
                     __GLOBAL_PROFILER.sections[section_index] = Some(section);
                     __GLOBAL_PROFILER.sections[section_index].as_mut().unwrap()
@@ -58,7 +58,7 @@ impl AutoProfile {
 }
 
 #[cfg(feature = "profiling")]
-impl Drop for AutoProfile {
+impl Drop for __AutoProfile {
     // Helps guard against early returns in profile sections.
     // If an early return is triggered in a profile section, the instance of AutoProfile
     // will be dropped, allowing us to run this code to automatically close the profile section.
@@ -87,7 +87,7 @@ pub struct __GlobalProfiler {
     // enforced at compile time by the proc macros, and users should NOT be interacting with the
     // global profiler except through the provided macros.
     #[cfg(feature = "profiling")]
-    sections: [Option<ProfileSection>; __get_max_profile_sections!()],
+    sections: [Option<__ProfileSection>; __get_max_profile_sections!()],
 
     #[cfg(feature = "profiling")]
     current_scope: Option<usize>,
@@ -190,11 +190,11 @@ fn read_os_timer() -> u64 {
 }
 
 #[inline(always)]
-fn read_cpu_timer() -> u64 { unsafe { _rdtsc() } }
+pub fn read_cpu_timer() -> u64 { unsafe { _rdtsc() } }
 
 /// Given a sample interval in milliseconds, returns an estimate of how many CPU timer ticks occur
 /// in that interval.
-fn get_cpu_frequency_estimate(ms_to_wait: u64) -> u64 {
+pub fn get_cpu_frequency_estimate(ms_to_wait: u64) -> u64 {
     let os_timer_frequency = get_os_timer_frequency();
     let os_wait_time = os_timer_frequency * ms_to_wait / 1000;
 

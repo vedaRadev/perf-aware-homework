@@ -31,7 +31,7 @@ where T: Iterator<Item = proc_macro::TokenTree> {
 
     let autoprofile_varname = format!("__auto_profile_{index}");
     let profile_section_begin = TokenStream::from_str(format!(
-        r#"let {autoprofile_varname} = performance_metrics::AutoProfile::new({label}, {index}, {});"#,
+        r#"let {autoprofile_varname} = performance_metrics::__AutoProfile::new({label}, {index}, {});"#,
         if bytes_expression.is_some() { bytes_expression.unwrap().to_string() } else { "0".to_string() }
     ).as_str());
 

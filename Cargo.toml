@@ -1,5 +1,11 @@
 [workspace]
-members = ["generator", "processor", "repetition_testing"]
+members = [
+    "libs/*",
+    "generator",
+    "processor",
+    "repetition_testing"
+]
+
 resolver = "2"
 
 [workspace.package]

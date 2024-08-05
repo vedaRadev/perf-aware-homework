@@ -1,0 +1,12 @@
+[package]
+name = "profiling_proc_macros"
+edition = "2021"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[features]
+profiling = []
+
+[lib]
+proc-macro = true

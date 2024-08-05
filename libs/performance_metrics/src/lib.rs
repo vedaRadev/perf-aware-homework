@@ -155,23 +155,23 @@ impl __GlobalProfiler {
 /// DO NOT TOUCH THE GLOBAL PROFILER. USE THE PROVIDED PROC MACROS.
 pub static mut __GLOBAL_PROFILER: __GlobalProfiler = __GlobalProfiler::init();
 
+#[macro_export]
 macro_rules! end_and_print_profile_info {
     ($cpu_frequency_sample_millis:expr) => {
         unsafe {
-            $crate::performance_metrics::__GLOBAL_PROFILER.end_and_print_profile_info($cpu_frequency_sample_millis);
+            $crate::__GLOBAL_PROFILER.end_and_print_profile_info($cpu_frequency_sample_millis);
         }
     }
 }
-pub(crate) use end_and_print_profile_info;
 
+#[macro_export]
 macro_rules! init_profiler {
     () => {
         unsafe {
-            $crate::performance_metrics::__GLOBAL_PROFILER.begin_profiling();
+            $crate::__GLOBAL_PROFILER.begin_profiling();
         }
     }
 }
-pub(crate) use init_profiler;
 
 fn get_os_timer_frequency() -> u64 {
     unsafe {

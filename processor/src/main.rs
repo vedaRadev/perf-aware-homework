@@ -1,5 +1,4 @@
 mod json;
-mod performance_metrics;
 
 use std::{
     env,

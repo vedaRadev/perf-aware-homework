@@ -1,5 +1,5 @@
 use std::{ fmt, slice, rc::Rc, };
-use crate::performance_metrics::profile_function;
+use performance_metrics::profile_function;
 
 #[derive(Debug)]
 pub struct InvalidJsonError { at: usize, message: String }

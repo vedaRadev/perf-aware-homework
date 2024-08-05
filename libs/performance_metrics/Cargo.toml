@@ -1,13 +1,17 @@
 [package]
-name = "processor"
+name = "performance_metrics"
 edition = "2021"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
 
+[lib]
+path = "src/lib.rs"
+crate-type = [ "lib" ]
+
 [features]
 profiling = []
 
 [dependencies]
+profiling_proc_macros = { path = "../profiling_proc_macros" }
 winapi = { version = "0.3.9", features = ["profileapi"] }
-performance_metrics = { path = "../libs/performance_metrics" }

@@ -92,7 +92,7 @@ dependencies = [
 name = "repetition_testing"
 version = "0.1.0"
 dependencies = [
- "winapi",
+ "performance_metrics",
 ]
 
 [[package]]

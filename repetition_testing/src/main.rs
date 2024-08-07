@@ -1,6 +1,7 @@
 // TODO instead of tests panicking for whatever result, they should return a result containing the
 // TimeTestResult or an error. If they return an error then the repetition tester should just make
 // note of the error and continue with whatever the next test is.
+// TODO buffer alloc switch within tests
 
 use performance_metrics::{ read_cpu_timer, get_cpu_frequency_estimate };
 use winapi::{
@@ -34,14 +35,18 @@ use std::{
 
 /// Number of seconds to wait for a new hi/lo count before ending the test.
 const MAX_WAIT_TIME_SECONDS: f64 = 5.0;
-const FILENAME: &str = "haversine_pairs.json";
 const MEGABYTES: u64 = 1024 * 1024;
 const GIGABYTES: u64 = MEGABYTES * 1024;
 const LINE_CLEAR: [u8; 64] = [b' '; 64];
 
 struct TimeTestResult { cycles_elapsed: u64, bytes_processed: Option<u64> }
+struct TimeTestParams<'a> {
+    file_name: &'a str,
+    file_size: u64,
+    buffer: &'a mut Vec<u8>,
+}
 
-type TimeTest = fn() -> TimeTestResult;
+type TimeTest = fn(TimeTestParams) -> TimeTestResult;
 struct RepetitionTester {
     tests: Vec<(TimeTest, &'static str)>
 }
@@ -58,10 +63,12 @@ impl RepetitionTester {
         self.tests.push((test, test_name));
     }
 
-    fn run_tests(&self) {
+    fn run_tests(&self, file_name: &str) {
         let cpu_freq = get_cpu_frequency_estimate(1000);
         let mut stdout = stdout();
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
+        let file_size = fs::metadata(file_name).expect("failed to read file metadata").file_size();
+        let mut buffer = vec![0u8; file_size as usize];
 
         for (do_test, test_name) in &self.tests {
             let mut total_cycles = 0u64;
@@ -75,7 +82,7 @@ impl RepetitionTester {
             loop {
                 iterations += 1;
 
-                let test_result = do_test();
+                let test_result = do_test(TimeTestParams { file_name, file_size, buffer: &mut buffer });
                 cycles_since_last_min += test_result.cycles_elapsed;
                 total_cycles += test_result.cycles_elapsed;
                 if let Some(bytes_processed) = test_result.bytes_processed {
@@ -134,34 +141,39 @@ impl RepetitionTester {
     }
 }
 
-fn read_with_fs_read() -> TimeTestResult {
-    let file_size = fs::metadata(FILENAME).expect("failed to read file metadata").file_size();
+fn read_with_fs_read(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { file_name, file_size, .. } = params;
 
     let cycles_begin = read_cpu_timer();
-    _ = fs::read(FILENAME);
+    _ = fs::read(file_name);
     let cycles_elapsed = read_cpu_timer() - cycles_begin;
 
     TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
 }
 
-fn buffered_read() -> TimeTestResult {
-    let file_size = fs::metadata(FILENAME).expect("failed to read file metadata").file_size();
-    let mut file = BufReader::new(fs::File::open(FILENAME).expect("Failed to open file"));
-    let mut buffer = Vec::with_capacity(file_size as usize);
+fn buffered_read(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { file_name, file_size, buffer } = params;
+
+    let mut file = BufReader::new(fs::File::open(file_name).expect("Failed to open file"));
 
     let cycles_begin = read_cpu_timer();
-    file.read_to_end(&mut buffer).expect("failed to read bytes into buffer");
+    let bytes_read = file.read(&mut buffer[..]).expect("failed to read file") as u64;
     let cycles_elapsed = read_cpu_timer() - cycles_begin;
+    if bytes_read != file_size {
+        panic!("file read failed: expected to read {file_size} bytes but actually read {bytes_read}");
+    }
 
     TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
 }
 
 // NOTE This will fail if the file size exceeds 64 bits.
-fn read_with_win_read() -> TimeTestResult {
-    let filename = CString::new(FILENAME).expect("failed to create cstring version of filename");
+fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { file_name, file_size, buffer } = params;
+    let file_name_cstr = CString::new(file_name).expect("failed to create cstring version of filename");
+
     let file_handle = unsafe {
         CreateFileA(
-            filename.as_ptr(),
+            file_name_cstr.as_ptr(),
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             std::ptr::null_mut(),
@@ -173,11 +185,9 @@ fn read_with_win_read() -> TimeTestResult {
 
     if file_handle == INVALID_HANDLE_VALUE {
         let errno = unsafe { GetLastError() };
-        panic!("(errno {}) Obtained invalid handle, failed to read file {}", errno, FILENAME);
+        panic!("(errno {}) Obtained invalid handle, failed to read file {}", errno, file_name);
     }
 
-    let bytes_to_read = fs::metadata(FILENAME).expect("failed to read file metadata").file_size() as DWORD;
-    let mut buffer: Vec<u8> = Vec::with_capacity(bytes_to_read as usize);
     let buffer_ptr = buffer.as_mut_ptr();
     let mut bytes_read: DWORD = 0;
 
@@ -186,7 +196,7 @@ fn read_with_win_read() -> TimeTestResult {
         ReadFile(
             file_handle,
             buffer_ptr as *mut winapi::ctypes::c_void,
-            bytes_to_read,
+            file_size as DWORD,
             &mut bytes_read,
             std::ptr::null_mut(),
         )
@@ -195,7 +205,7 @@ fn read_with_win_read() -> TimeTestResult {
 
     if result == 0 {
         let errno = unsafe { GetLastError() };
-        panic!("(errno {}) Failed to read file {}", errno, FILENAME);
+        panic!("(errno {}) Failed to read file {}", errno, file_name);
     }
 
     unsafe { CloseHandle(file_handle); }
@@ -203,14 +213,13 @@ fn read_with_win_read() -> TimeTestResult {
     TimeTestResult { cycles_elapsed, bytes_processed: Some(bytes_read.into()) }
 }
 
-fn read_with_libc_fread() -> TimeTestResult {
-    let file_size = fs::metadata(FILENAME).expect("failed to read file metadata").file_size();
-    let mut buffer: Vec<u8> = Vec::with_capacity(file_size as usize);
+fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { file_name, file_size, buffer } = params;
 
-    let filename = CString::new(FILENAME).unwrap();
-    let filemode = CString::new("rb").unwrap();
+    let file_name_cstr = CString::new(file_name).unwrap();
+    let file_mode_cstr = CString::new("rb").unwrap();
 
-    let file = unsafe { fopen(filename.as_ptr(), filemode.as_ptr()) };
+    let file = unsafe { fopen(file_name_cstr.as_ptr(), file_mode_cstr.as_ptr()) };
 
     let cycles_begin = read_cpu_timer();
     let result = unsafe {
@@ -224,7 +233,7 @@ fn read_with_libc_fread() -> TimeTestResult {
     let cycles_elapsed = read_cpu_timer() - cycles_begin;
 
     if result != 1 {
-        panic!("failed to read file {}", FILENAME);
+        panic!("failed to read file {}", file_name);
     }
 
     unsafe { fclose(file) };
@@ -233,10 +242,15 @@ fn read_with_libc_fread() -> TimeTestResult {
 }
 
 fn main() {
+    let mut args = std::env::args().skip(1);
+    let file_name = args.next().unwrap();
+
     let mut repetition_tester = RepetitionTester::new();
     repetition_tester.register_test(read_with_fs_read, "rust fs::read");
     repetition_tester.register_test(buffered_read, "rust buffered read");
     repetition_tester.register_test(read_with_libc_fread, "libc fread");
     repetition_tester.register_test(read_with_win_read, "windows read");
-    repetition_tester.run_tests();
+    loop {
+        repetition_tester.run_tests(&file_name);
+    }
 }

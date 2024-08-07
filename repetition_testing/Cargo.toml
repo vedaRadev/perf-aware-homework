@@ -7,3 +7,4 @@ description.workspace = true
 
 [dependencies]
 performance_metrics = { path = "../libs/performance_metrics" }
+winapi = { version = "0.3.9", features = ["errhandlingapi", "fileapi", "handleapi"] }

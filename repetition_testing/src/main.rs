@@ -1,12 +1,39 @@
+// TODO instead of tests panicking for whatever result, they should return a result containing the
+// TimeTestResult or an error. If they return an error then the repetition tester should just make
+// note of the error and continue with whatever the next test is.
+
 use performance_metrics::{ read_cpu_timer, get_cpu_frequency_estimate };
+use winapi::{
+    ctypes::c_void,
+    shared::minwindef::DWORD,
+    um::{
+        errhandlingapi::GetLastError,
+        handleapi::{
+            INVALID_HANDLE_VALUE,
+            CloseHandle
+        },
+        fileapi::{
+            OPEN_EXISTING,
+            CreateFileA,
+            ReadFile,
+        },
+        winnt::{
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            FILE_SHARE_WRITE,
+            FILE_ATTRIBUTE_NORMAL,
+        },
+    }
+};
 use std::{
     io::{ stdout, Write },
     os::windows::fs::MetadataExt,
-    fs
+    fs,
+    ffi::CString,
 };
 
 /// Number of seconds to wait for a new hi/lo count before ending the test.
-const MAX_WAIT_TIME_SECONDS: f64 = 3.0;
+const MAX_WAIT_TIME_SECONDS: f64 = 5.0;
 const FILENAME: &str = "haversine_pairs.json";
 const MEGABYTES: u64 = 1024 * 1024;
 const GIGABYTES: u64 = MEGABYTES * 1024;
@@ -26,6 +53,7 @@ impl RepetitionTester {
         }
     }
 
+    #[inline(always)]
     fn register_test(&mut self, test: TimeTest, test_name: &'static str) {
         self.tests.push((test, test_name));
     }
@@ -47,7 +75,7 @@ impl RepetitionTester {
             loop {
                 iterations += 1;
 
-                let test_result = (*do_test)();
+                let test_result = do_test();
                 cycles_since_last_min += test_result.cycles_elapsed;
                 total_cycles += test_result.cycles_elapsed;
                 if let Some(bytes_processed) = test_result.bytes_processed {
@@ -116,8 +144,56 @@ fn read_with_fs_read() -> TimeTestResult {
     TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
 }
 
+// NOTE This will fail if the file size exceeds 64 bits.
+fn read_with_win_read() -> TimeTestResult {
+    let filename = CString::new(FILENAME).expect("failed to create cstring version of filename");
+    let file_handle = unsafe {
+        CreateFileA(
+            filename.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            std::ptr::null_mut(),
+        )
+    };
+
+    if file_handle == INVALID_HANDLE_VALUE {
+        let errno = unsafe { GetLastError() };
+        panic!("(errno {}) Obtained invalid handle, failed to read file {}", errno, FILENAME);
+    }
+
+    let bytes_to_read = fs::metadata(FILENAME).expect("failed to read file metadata").file_size() as DWORD;
+    let mut buffer: Vec<u8> = Vec::with_capacity(bytes_to_read as usize);
+    let buffer_ptr = buffer.as_mut_ptr();
+    let mut bytes_read: DWORD = 0;
+
+    let cycles_begin = read_cpu_timer();
+    let result = unsafe {
+        ReadFile(
+            file_handle,
+            buffer_ptr as *mut c_void,
+            bytes_to_read,
+            &mut bytes_read,
+            std::ptr::null_mut(),
+        )
+    };
+    let cycles_elapsed = read_cpu_timer() - cycles_begin;
+
+    if result == 0 {
+        let errno = unsafe { GetLastError() };
+        panic!("(errno {}) Failed to read file {}", errno, FILENAME);
+    }
+
+    unsafe { CloseHandle(file_handle); }
+
+    TimeTestResult { cycles_elapsed, bytes_processed: Some(bytes_read.into()) }
+}
+
 fn main() {
     let mut repetition_tester = RepetitionTester::new();
-    repetition_tester.register_test(read_with_fs_read, "read with fs read");
+    repetition_tester.register_test(read_with_fs_read, "fs::read");
+    repetition_tester.register_test(read_with_win_read, "windows read");
     repetition_tester.run_tests();
 }

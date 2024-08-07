@@ -92,6 +92,7 @@ dependencies = [
 name = "repetition_testing"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "performance_metrics",
  "winapi",
 ]

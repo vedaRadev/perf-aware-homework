@@ -4,7 +4,6 @@
 
 use performance_metrics::{ read_cpu_timer, get_cpu_frequency_estimate };
 use winapi::{
-    ctypes::c_void,
     shared::minwindef::DWORD,
     um::{
         errhandlingapi::GetLastError,
@@ -25,8 +24,9 @@ use winapi::{
         },
     }
 };
+use libc::{ fread, fopen, fclose };
 use std::{
-    io::{ stdout, Write },
+    io::{ stdout, Write, BufReader, Read },
     os::windows::fs::MetadataExt,
     fs,
     ffi::CString,
@@ -37,7 +37,7 @@ const MAX_WAIT_TIME_SECONDS: f64 = 5.0;
 const FILENAME: &str = "haversine_pairs.json";
 const MEGABYTES: u64 = 1024 * 1024;
 const GIGABYTES: u64 = MEGABYTES * 1024;
-const LINE_CLEAR: [u8; 50] = [b' '; 50];
+const LINE_CLEAR: [u8; 64] = [b' '; 64];
 
 struct TimeTestResult { cycles_elapsed: u64, bytes_processed: Option<u64> }
 
@@ -59,7 +59,7 @@ impl RepetitionTester {
     }
 
     fn run_tests(&self) {
-        let cpu_freq = get_cpu_frequency_estimate(100);
+        let cpu_freq = get_cpu_frequency_estimate(1000);
         let mut stdout = stdout();
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
 
@@ -144,6 +144,18 @@ fn read_with_fs_read() -> TimeTestResult {
     TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
 }
 
+fn buffered_read() -> TimeTestResult {
+    let file_size = fs::metadata(FILENAME).expect("failed to read file metadata").file_size();
+    let mut file = BufReader::new(fs::File::open(FILENAME).expect("Failed to open file"));
+    let mut buffer = Vec::with_capacity(file_size as usize);
+
+    let cycles_begin = read_cpu_timer();
+    file.read_to_end(&mut buffer).expect("failed to read bytes into buffer");
+    let cycles_elapsed = read_cpu_timer() - cycles_begin;
+
+    TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
+}
+
 // NOTE This will fail if the file size exceeds 64 bits.
 fn read_with_win_read() -> TimeTestResult {
     let filename = CString::new(FILENAME).expect("failed to create cstring version of filename");
@@ -173,7 +185,7 @@ fn read_with_win_read() -> TimeTestResult {
     let result = unsafe {
         ReadFile(
             file_handle,
-            buffer_ptr as *mut c_void,
+            buffer_ptr as *mut winapi::ctypes::c_void,
             bytes_to_read,
             &mut bytes_read,
             std::ptr::null_mut(),
@@ -191,9 +203,40 @@ fn read_with_win_read() -> TimeTestResult {
     TimeTestResult { cycles_elapsed, bytes_processed: Some(bytes_read.into()) }
 }
 
+fn read_with_libc_fread() -> TimeTestResult {
+    let file_size = fs::metadata(FILENAME).expect("failed to read file metadata").file_size();
+    let mut buffer: Vec<u8> = Vec::with_capacity(file_size as usize);
+
+    let filename = CString::new(FILENAME).unwrap();
+    let filemode = CString::new("rb").unwrap();
+
+    let file = unsafe { fopen(filename.as_ptr(), filemode.as_ptr()) };
+
+    let cycles_begin = read_cpu_timer();
+    let result = unsafe {
+        fread(
+            buffer.as_mut_ptr() as *mut libc::c_void,
+            file_size as usize,
+            1,
+            file
+        )
+    };
+    let cycles_elapsed = read_cpu_timer() - cycles_begin;
+
+    if result != 1 {
+        panic!("failed to read file {}", FILENAME);
+    }
+
+    unsafe { fclose(file) };
+
+    TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
+}
+
 fn main() {
     let mut repetition_tester = RepetitionTester::new();
-    repetition_tester.register_test(read_with_fs_read, "fs::read");
+    repetition_tester.register_test(read_with_fs_read, "rust fs::read");
+    repetition_tester.register_test(buffered_read, "rust buffered read");
+    repetition_tester.register_test(read_with_libc_fread, "libc fread");
     repetition_tester.register_test(read_with_win_read, "windows read");
     repetition_tester.run_tests();
 }

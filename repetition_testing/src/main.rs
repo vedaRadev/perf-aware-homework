@@ -46,7 +46,7 @@ struct TimeTestParams<'a> {
     buffer: &'a mut Vec<u8>,
 }
 
-type TimeTest = fn(TimeTestParams) -> TimeTestResult;
+type TimeTest = Box<dyn Fn(TimeTestParams) -> TimeTestResult>;
 struct RepetitionTester {
     tests: Vec<(TimeTest, &'static str)>
 }
@@ -63,80 +63,82 @@ impl RepetitionTester {
         self.tests.push((test, test_name));
     }
 
-    fn run_tests(&self, file_name: &str) {
+    fn run_tests(&self, file_name: &str) -> ! {
         let cpu_freq = get_cpu_frequency_estimate(1000);
         let mut stdout = stdout();
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
         let file_size = fs::metadata(file_name).expect("failed to read file metadata").file_size();
         let mut buffer = vec![0u8; file_size as usize];
 
-        for (do_test, test_name) in &self.tests {
-            let mut total_cycles = 0u64;
-            let mut total_bytes = 0u64;
-            let mut cycles_since_last_min = 0u64;
-            let mut min = TimeTestResult { cycles_elapsed: u64::MAX, bytes_processed: None };
-            let mut max = TimeTestResult { cycles_elapsed: u64::MIN, bytes_processed: None };
-            let mut iterations = 0;
+        loop {
+            for (do_test, test_name) in &self.tests {
+                let mut total_cycles = 0u64;
+                let mut total_bytes = 0u64;
+                let mut cycles_since_last_min = 0u64;
+                let mut min = TimeTestResult { cycles_elapsed: u64::MAX, bytes_processed: None };
+                let mut max = TimeTestResult { cycles_elapsed: u64::MIN, bytes_processed: None };
+                let mut iterations = 0;
 
-            println!("====== {test_name} ======");
-            loop {
-                iterations += 1;
+                println!("====== {test_name} ======");
+                loop {
+                    iterations += 1;
 
-                let test_result = do_test(TimeTestParams { file_name, file_size, buffer: &mut buffer });
-                cycles_since_last_min += test_result.cycles_elapsed;
-                total_cycles += test_result.cycles_elapsed;
-                if let Some(bytes_processed) = test_result.bytes_processed {
-                    total_bytes += bytes_processed;
-                }
-
-                if test_result.cycles_elapsed > max.cycles_elapsed { max = test_result; }
-                else if test_result.cycles_elapsed < min.cycles_elapsed {
-                    cycles_since_last_min = 0;
-
-                    // printing through stdout with print! and println! only actually flush the buffer when
-                    // a newline is encountered. If we want to use carriage return and update a single line
-                    // then we have to write to and flush stdout manually.
-                    _ = stdout.write_all(&LINE_CLEAR);
-                    let seconds = test_result.cycles_elapsed as f64 / cpu_freq as f64;
-                    _ = stdout.write_all(format!(
-                        "\rMin: {} ({:.4}ms)",
-                        test_result.cycles_elapsed,
-                        seconds * 1000.0
-                    ).as_bytes());
-
+                    let test_result = do_test(TimeTestParams { file_name, file_size, buffer: &mut buffer });
+                    cycles_since_last_min += test_result.cycles_elapsed;
+                    total_cycles += test_result.cycles_elapsed;
                     if let Some(bytes_processed) = test_result.bytes_processed {
-                        let gb_per_second = bytes_processed as f64 / GIGABYTES as f64 / seconds;
-                        _ = stdout.write_all(format!(" {:.4}gb/s", gb_per_second).as_bytes());
+                        total_bytes += bytes_processed;
                     }
 
-                    _ = stdout.flush();
+                    if test_result.cycles_elapsed > max.cycles_elapsed { max = test_result; }
+                    else if test_result.cycles_elapsed < min.cycles_elapsed {
+                        cycles_since_last_min = 0;
 
-                    min = test_result;
+                        // printing through stdout with print! and println! only actually flush the buffer when
+                        // a newline is encountered. If we want to use carriage return and update a single line
+                        // then we have to write to and flush stdout manually.
+                        _ = stdout.write_all(&LINE_CLEAR);
+                        let seconds = test_result.cycles_elapsed as f64 / cpu_freq as f64;
+                        _ = stdout.write_all(format!(
+                                "\rMin: {} ({:.4}ms)",
+                                test_result.cycles_elapsed,
+                                seconds * 1000.0
+                        ).as_bytes());
+
+                        if let Some(bytes_processed) = test_result.bytes_processed {
+                            let gb_per_second = bytes_processed as f64 / GIGABYTES as f64 / seconds;
+                            _ = stdout.write_all(format!(" {:.4}gb/s", gb_per_second).as_bytes());
+                        }
+
+                        _ = stdout.flush();
+
+                        min = test_result;
+                    }
+
+                    if cycles_since_last_min > max_cycles_to_wait {
+                        break;
+                    }
                 }
 
-                if cycles_since_last_min > max_cycles_to_wait {
-                    break;
+                println!();
+
+                let seconds = max.cycles_elapsed as f64 / cpu_freq as f64;
+                print!("Max: {} ({:.4}ms)", max.cycles_elapsed, seconds * 1000.0);
+                if let Some(bytes_processed) = max.bytes_processed {
+                    print!(" {:.4}gb/s", bytes_processed as f64 / GIGABYTES as f64 / seconds);
                 }
-            }
+                println!();
 
-            println!();
-
-            let seconds = max.cycles_elapsed as f64 / cpu_freq as f64;
-            print!("Max: {} ({:.4}ms)", max.cycles_elapsed, seconds * 1000.0);
-            if let Some(bytes_processed) = max.bytes_processed {
-                print!(" {:.4}gb/s", bytes_processed as f64 / GIGABYTES as f64 / seconds);
+                let avg_cycles = total_cycles / iterations;
+                let avg_seconds = avg_cycles as f64 / cpu_freq as f64;
+                print!("Avg: {} ({:.4}ms)", avg_cycles, avg_seconds * 1000.0);
+                if total_bytes > 0 {
+                    let avg_bytes = total_bytes / iterations;
+                    print!(" {:.4}gb/s", avg_bytes as f64 / GIGABYTES as f64 / avg_seconds);
+                }
+                println!();
+                println!();
             }
-            println!();
-
-            let avg_cycles = total_cycles / iterations;
-            let avg_seconds = avg_cycles as f64 / cpu_freq as f64;
-            print!("Avg: {} ({:.4}ms)", avg_cycles, avg_seconds * 1000.0);
-            if total_bytes > 0 {
-                let avg_bytes = total_bytes / iterations;
-                print!(" {:.4}gb/s", avg_bytes as f64 / GIGABYTES as f64 / avg_seconds);
-            }
-            println!();
-            println!();
         }
     }
 }
@@ -241,16 +243,28 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
     TimeTestResult { cycles_elapsed, bytes_processed: Some(file_size) }
 }
 
+fn with_buffer_alloc(test: fn(TimeTestParams) -> TimeTestResult) -> TimeTest {
+    Box::new(
+        move |params: TimeTestParams| {
+            let TimeTestParams { file_size, file_name, .. } = params;
+            let mut buffer = vec![0u8; file_size as usize];
+
+            test(TimeTestParams { file_size, file_name, buffer: &mut buffer })
+        }
+    )
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let file_name = args.next().unwrap();
 
     let mut repetition_tester = RepetitionTester::new();
-    repetition_tester.register_test(read_with_fs_read, "rust fs::read");
-    repetition_tester.register_test(buffered_read, "rust buffered read");
-    repetition_tester.register_test(read_with_libc_fread, "libc fread");
-    repetition_tester.register_test(read_with_win_read, "windows read");
-    loop {
-        repetition_tester.run_tests(&file_name);
-    }
+    repetition_tester.register_test(Box::new(read_with_fs_read), "rust fs::read");
+    repetition_tester.register_test(Box::new(buffered_read), "rust buffered read");
+    repetition_tester.register_test(with_buffer_alloc(buffered_read), "rust buffered read with buffer alloc");
+    repetition_tester.register_test(Box::new(read_with_libc_fread), "libc fread");
+    repetition_tester.register_test(with_buffer_alloc(read_with_libc_fread), "libc fread with buffer alloc");
+    repetition_tester.register_test(Box::new(read_with_win_read), "windows read");
+    repetition_tester.register_test(with_buffer_alloc(read_with_win_read), "windows read with buffer alloc");
+    repetition_tester.run_tests(&file_name);
 }

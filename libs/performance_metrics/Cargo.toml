@@ -14,4 +14,4 @@ profiling = []
 
 [dependencies]
 profiling_proc_macros = { path = "../profiling_proc_macros" }
-winapi = { version = "0.3.9", features = ["profileapi"] }
+winapi = { version = "0.3.9", features = ["processthreadsapi", "profileapi", "psapi"] }

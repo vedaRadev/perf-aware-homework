@@ -1,8 +1,11 @@
 extern crate profiling_proc_macros;
 pub use profiling_proc_macros::{ profile, profile_function };
 
-use winapi::um::profileapi;
-use std::mem;
+use std::{ mem, cell::OnceCell };
+use winapi::{
+    shared::minwindef,
+    um::{ profileapi, psapi, processthreadsapi, winnt }
+};
 use core::arch::x86_64::_rdtsc;
 
 #[cfg(feature = "profiling")]
@@ -191,6 +194,26 @@ fn read_os_timer() -> u64 {
 
 #[inline(always)]
 pub fn read_cpu_timer() -> u64 { unsafe { _rdtsc() } }
+
+pub fn read_os_page_fault_count() -> u64 {
+    static mut PROCESS_HANDLE: OnceCell<winnt::HANDLE> = OnceCell::new();
+
+    let mut proc_mem_counters: psapi::PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+    proc_mem_counters.cb = std::mem::size_of_val(&proc_mem_counters) as u32;
+    unsafe {
+        psapi::GetProcessMemoryInfo(
+            *PROCESS_HANDLE.get_or_init(|| processthreadsapi::OpenProcess(
+                winnt::PROCESS_QUERY_INFORMATION | winnt::PROCESS_VM_READ,
+                minwindef::FALSE,
+                processthreadsapi::GetCurrentProcessId()
+            )),
+            &mut proc_mem_counters,
+            proc_mem_counters.cb,
+        );
+    }
+    
+    proc_mem_counters.PageFaultCount.into()
+}
 
 /// Given a sample interval in milliseconds, returns an estimate of how many CPU timer ticks occur
 /// in that interval.

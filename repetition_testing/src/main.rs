@@ -1,10 +1,6 @@
 // TODO instead of tests panicking for whatever result, they should return a result containing the
 // TimeTestResult or an error. If they return an error then the repetition tester should just make
 // note of the error and continue with whatever the next test is.
-//
-// TODO pass the repetition tester into tests and use helper functions to collect data.
-// Then we could just collect the same exact info for every test without having to write all the
-// boilerplate of doing so within the tests themselves.
 
 use performance_metrics::{
     read_cpu_timer,
@@ -49,8 +45,8 @@ const LINE_CLEAR: [u8; 64] = [b' '; 64];
 #[derive(Default)]
 struct TimeTestResult {
     cycles_elapsed: u64,
-    bytes_processed: Option<u64>,
-    page_faults: Option<u64>,
+    bytes_processed: u64,
+    page_faults: u64,
 }
 
 impl TimeTestResult {
@@ -64,19 +60,42 @@ impl TimeTestResult {
                 seconds * 1000.0
         ).as_bytes());
 
-        if let Some(bytes_processed) = self.bytes_processed {
-            let gb_per_second = bytes_processed as f64 / GIGABYTES as f64 / seconds;
-            _ = stdout.write_all(format!(" {:.4}gb/s", gb_per_second).as_bytes());
-        }
+        let gb_per_second = self.bytes_processed as f64 / GIGABYTES as f64 / seconds;
+        _ = stdout.write_all(format!(" {:.4}gb/s", gb_per_second).as_bytes());
 
-        if let Some(page_faults) = self.page_faults {
-            _ = stdout.write_all(format!(" {:.4}pf", page_faults).as_bytes());
-            if page_faults > 0 {
-                if let Some(bytes_processed) = self.bytes_processed {
-                    _ = stdout.write_all(format!(" ({:.4}k/pf)", bytes_processed as f64 / page_faults as f64 / 1024.0).as_bytes());
-                }
-            }
+        _ = stdout.write_all(format!(" {:.4}pf", self.page_faults).as_bytes());
+        if self.page_faults > 0 && self.bytes_processed > 0 {
+            let kb_per_page_fault = self.bytes_processed as f64 / self.page_faults as f64 / 1024.0;
+            _ = stdout.write_all(format!(" ({:.4}k/pf)", kb_per_page_fault).as_bytes());
         }
+    }
+}
+
+struct TimeTestSection {
+    result: TimeTestResult,
+}
+
+impl TimeTestSection {
+    #[inline(always)]
+    fn begin() -> Self {
+        let page_faults_begin = read_os_page_fault_count();
+        let cycles_begin = read_cpu_timer();
+        let result = TimeTestResult {
+            cycles_elapsed: cycles_begin,
+            page_faults: page_faults_begin,
+            bytes_processed: 0,
+        };
+
+        Self { result }
+    }
+
+    #[inline(always)]
+    fn end(mut self, bytes_processed: u64) -> TimeTestResult {
+        self.result.cycles_elapsed = read_cpu_timer() - self.result.cycles_elapsed;
+        self.result.page_faults = read_os_page_fault_count() - self.result.page_faults;
+        self.result.bytes_processed = bytes_processed;
+
+        self.result
     }
 }
 
@@ -106,16 +125,15 @@ impl RepetitionTester {
     fn run_tests(&self, file_name: &str) -> ! {
         let cpu_freq = get_cpu_frequency_estimate(1000);
         let mut stdout = stdout();
+        // The amount of cycles to wait for a new min before moving on to the next test.
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
         let file_size = fs::metadata(file_name).expect("failed to read file metadata").file_size();
         let mut buffer = vec![0u8; file_size as usize];
 
         loop {
             for (do_test, test_name) in &self.tests {
-                let mut total_cycles = 0u64;
-                let mut total_bytes = 0u64;
-                let mut total_page_faults = 0u64;
                 let mut cycles_since_last_min = 0u64;
+                let mut total = TimeTestResult::default();
                 let mut min = TimeTestResult { cycles_elapsed: u64::MAX, ..Default::default() };
                 let mut max = TimeTestResult { cycles_elapsed: u64::MIN, ..Default::default() };
                 let mut iterations = 0;
@@ -125,14 +143,11 @@ impl RepetitionTester {
                     iterations += 1;
 
                     let test_result = do_test(TimeTestParams { file_name, file_size, buffer: &mut buffer });
+                    total.cycles_elapsed += test_result.cycles_elapsed;
+                    total.bytes_processed += test_result.bytes_processed;
+                    total.page_faults += test_result.page_faults;
+
                     cycles_since_last_min += test_result.cycles_elapsed;
-                    total_cycles += test_result.cycles_elapsed;
-                    if let Some(bytes_processed) = test_result.bytes_processed {
-                        total_bytes += bytes_processed;
-                    }
-                    if let Some(page_faults) = test_result.page_faults {
-                        total_page_faults += page_faults;
-                    }
 
                     if test_result.cycles_elapsed > max.cycles_elapsed { max = test_result; }
                     else if test_result.cycles_elapsed < min.cycles_elapsed {
@@ -161,11 +176,11 @@ impl RepetitionTester {
                 println!();
 
                 print!("Avg: ");
-                TimeTestResult {
-                    cycles_elapsed: total_cycles / iterations,
-                    bytes_processed: Some(total_bytes / iterations),
-                    page_faults: Some(total_page_faults / iterations),
-                }.print_result(cpu_freq);
+                let mut average = total;
+                average.cycles_elapsed /= iterations;
+                average.bytes_processed /= iterations;
+                average.page_faults /= iterations;
+                average.print_result(cpu_freq);
                 println!();
                 println!();
             }
@@ -176,38 +191,24 @@ impl RepetitionTester {
 fn read_with_fs_read(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, .. } = params;
 
-    let page_faults_begin = read_os_page_fault_count();
-    let cycles_begin = read_cpu_timer();
+    let test_section = TimeTestSection::begin();
     _ = fs::read(file_name);
-    let cycles_elapsed = read_cpu_timer() - cycles_begin;
-    let page_faults = read_os_page_fault_count() - page_faults_begin;
-
-    TimeTestResult {
-        cycles_elapsed,
-        bytes_processed: Some(file_size),
-        page_faults: Some(page_faults),
-    }
+    test_section.end(file_size)
 }
 
 fn buffered_read(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, buffer } = params;
-
     let mut file = BufReader::new(fs::File::open(file_name).expect("Failed to open file"));
 
-    let page_faults_begin = read_os_page_fault_count();
-    let cycles_begin = read_cpu_timer();
+    let test_section = TimeTestSection::begin();
     let bytes_read = file.read(&mut buffer[..]).expect("failed to read file") as u64;
-    let cycles_elapsed = read_cpu_timer() - cycles_begin;
-    let page_faults = read_os_page_fault_count() - page_faults_begin;
+    let test_result = test_section.end(bytes_read);
+
     if bytes_read != file_size {
         panic!("file read failed: expected to read {file_size} bytes but actually read {bytes_read}");
     }
 
-    TimeTestResult {
-        cycles_elapsed,
-        bytes_processed: Some(file_size),
-        page_faults: Some(page_faults),
-    }
+    test_result
 }
 
 // NOTE This will fail if the file size exceeds 64 bits.
@@ -235,8 +236,7 @@ fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
     let buffer_ptr = buffer.as_mut_ptr();
     let mut bytes_read: DWORD = 0;
 
-    let page_faults_begin = read_os_page_fault_count();
-    let cycles_begin = read_cpu_timer();
+    let test_section = TimeTestSection::begin();
     let result = unsafe {
         ReadFile(
             file_handle,
@@ -246,8 +246,7 @@ fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
             std::ptr::null_mut(),
         )
     };
-    let cycles_elapsed = read_cpu_timer() - cycles_begin;
-    let page_faults = read_os_page_fault_count() - page_faults_begin;
+    let test_result = test_section.end(bytes_read as u64);
 
     if result == 0 {
         let errno = unsafe { GetLastError() };
@@ -256,23 +255,16 @@ fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
 
     unsafe { CloseHandle(file_handle); }
 
-    TimeTestResult {
-        cycles_elapsed,
-        bytes_processed: Some(bytes_read.into()),
-        page_faults: Some(page_faults),
-    }
+    test_result
 }
 
 fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, buffer } = params;
-
     let file_name_cstr = CString::new(file_name).unwrap();
     let file_mode_cstr = CString::new("rb").unwrap();
-
     let file = unsafe { fopen(file_name_cstr.as_ptr(), file_mode_cstr.as_ptr()) };
 
-    let page_faults_begin = read_os_page_fault_count();
-    let cycles_begin = read_cpu_timer();
+    let test_section = TimeTestSection::begin();
     let result = unsafe {
         fread(
             buffer.as_mut_ptr() as *mut libc::c_void,
@@ -281,8 +273,7 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
             file
         )
     };
-    let cycles_elapsed = read_cpu_timer() - cycles_begin;
-    let page_faults = read_os_page_fault_count() - page_faults_begin;
+    let test_result = test_section.end(file_size);
 
     if result != 1 {
         panic!("failed to read file {}", file_name);
@@ -290,29 +281,15 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
 
     unsafe { fclose(file) };
 
-    TimeTestResult {
-        cycles_elapsed,
-        bytes_processed: Some(file_size),
-        page_faults: Some(page_faults),
-    }
+    test_result
 }
 
 fn write_to_all_bytes(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
-    let page_faults_begin = read_os_page_fault_count();
-    let cycles_begin = read_cpu_timer();
-
+    let test_section = TimeTestSection::begin();
     buffer.fill(0xFF);
-
-    let cycles_elapsed = read_cpu_timer() - cycles_begin;
-    let page_faults = read_os_page_fault_count() - page_faults_begin;
-
-    TimeTestResult {
-        cycles_elapsed,
-        bytes_processed: Some(buffer.len() as u64),
-        page_faults: Some(page_faults)
-    }
+    test_section.end(buffer.len() as u64)
 }
 
 fn with_buffer_alloc(test: fn(TimeTestParams) -> TimeTestResult) -> TimeTest {

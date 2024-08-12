@@ -33,6 +33,8 @@ use std::{
     io::{ stdout, Write, BufReader, Read },
     os::windows::fs::MetadataExt,
     fs,
+    slice,
+    alloc::{ alloc, dealloc, Layout },
     ffi::CString,
 };
 
@@ -102,7 +104,7 @@ impl TimeTestSection {
 struct TimeTestParams<'a> {
     file_name: &'a str,
     file_size: u64,
-    buffer: &'a mut Vec<u8>,
+    buffer: &'a mut [u8],
 }
 
 type TimeTest = Box<dyn Fn(TimeTestParams) -> TimeTestResult>;
@@ -128,7 +130,17 @@ impl RepetitionTester {
         // The amount of cycles to wait for a new min before moving on to the next test.
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
         let file_size = fs::metadata(file_name).expect("failed to read file metadata").file_size();
-        let mut buffer = vec![0u8; file_size as usize];
+
+        // NOTE Allocating memory here but explicitly not deallocating because we never actually
+        // return from the loop. The only way to end the loop is to quit the process which will
+        // free up our memory anyway.
+        // Also, allocating memory for an array like this instead of just doing vec![0u8; file_size]
+        // because I want to make sure that we're not touching the memory before trying to actually
+        // write to it. Don't want to take page fault hits on the memory until we actually need to
+        // write to it. I'm not sure if slice::from_raw_parts touches the memory; hopefully not.
+        let buffer_layout = Layout::array::<u8>(file_size as usize).expect("failed to create layout for u8 array");
+        let buffer_start = unsafe { alloc(buffer_layout) };
+        let buffer = unsafe { slice::from_raw_parts_mut(buffer_start, file_size as usize) };
 
         loop {
             for (do_test, test_name) in &self.tests {
@@ -142,7 +154,7 @@ impl RepetitionTester {
                 loop {
                     iterations += 1;
 
-                    let test_result = do_test(TimeTestParams { file_name, file_size, buffer: &mut buffer });
+                    let test_result = do_test(TimeTestParams { file_name, file_size, buffer });
                     total.cycles_elapsed += test_result.cycles_elapsed;
                     total.bytes_processed += test_result.bytes_processed;
                     total.page_faults += test_result.page_faults;
@@ -287,18 +299,44 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
 fn write_to_all_bytes(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
+    let mut index = 0usize;
+    let buffer_len = buffer.len();
+
     let test_section = TimeTestSection::begin();
-    buffer.fill(0xFF);
-    test_section.end(buffer.len() as u64)
+    while index != buffer_len {
+        buffer[index] = index as u8;
+        index += 1;
+    }
+
+    test_section.end(buffer_len as u64)
+}
+
+fn write_to_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+
+    let mut index = 0usize;
+    let buffer_len = buffer.len();
+
+    let test_section = TimeTestSection::begin();
+    while index != buffer_len {
+        buffer[buffer_len - 1 - index] = index as u8;
+        index += 1;
+    }
+
+    test_section.end(buffer_len as u64)
 }
 
 fn with_buffer_alloc(test: fn(TimeTestParams) -> TimeTestResult) -> TimeTest {
     Box::new(
         move |params: TimeTestParams| {
             let TimeTestParams { file_size, file_name, .. } = params;
-            let mut buffer = vec![0u8; file_size as usize];
+            let layout = Layout::array::<u8>(file_size as usize).expect("Failed to create memory layout for u8 array");
+            let buffer_start = unsafe { alloc(layout) };
+            let buffer= unsafe { slice::from_raw_parts_mut(buffer_start, file_size as usize) };
+            let result = test(TimeTestParams { file_size, file_name, buffer });
+            unsafe { dealloc(buffer_start, layout); }
 
-            test(TimeTestParams { file_size, file_name, buffer: &mut buffer })
+            result
         }
     )
 }
@@ -309,6 +347,9 @@ fn main() {
 
     let mut repetition_tester = RepetitionTester::new();
     repetition_tester.register_test(Box::new(write_to_all_bytes), "write to all bytes");
+    repetition_tester.register_test(with_buffer_alloc(write_to_all_bytes), "write to all bytes with buffer alloc");
+    repetition_tester.register_test(Box::new(write_to_all_bytes_backward), "write to all bytes backward");
+    repetition_tester.register_test(with_buffer_alloc(write_to_all_bytes_backward), "write to all bytes backward with buffer alloc");
     repetition_tester.register_test(Box::new(read_with_fs_read), "rust fs::read");
     repetition_tester.register_test(Box::new(buffered_read), "rust buffered read");
     repetition_tester.register_test(with_buffer_alloc(buffered_read), "rust buffered read with buffer alloc");

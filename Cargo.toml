@@ -3,7 +3,8 @@ members = [
     "libs/*",
     "generator",
     "processor",
-    "repetition_testing"
+    "repetition_testing",
+    "probe_page_fault_behavior",
 ]
 
 resolver = "2"

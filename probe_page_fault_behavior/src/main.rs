@@ -36,6 +36,11 @@ fn get_range(write_direction: &WriteDirection, size: usize) -> Box<dyn Iterator<
     }
 }
 
+// TODO cleanup
+// Find another way to record data for the csv so that we can just do one run through instead of
+// being like "touch 0 pages, tough 1 page, touch 2 pages, touch 3 pages, etc."
+// Will help reduce some of the hacky code I introduced to speed up output when not collecting data
+// in a csv.
 fn main() {
     let mut args = std::env::args().skip(1);
 
@@ -61,39 +66,61 @@ fn main() {
         _ = writeln!(file, "Page Count, Pages Touched, Page Faults, Extra Faults");
     }
 
-    for pages_to_touch in 0 .. page_count {
+    // If the output file is provided, then monotonically increase the amount of pages we touch by
+    // one each time up to the given page_count and generate that CSV, otherwise just skip straight
+    // to writing all page_count pages to quickly get some relevant output on the screen.
+    let range = if output_file.is_some() { 0 ..= page_count } else { page_count ..= page_count };
+    for pages_to_touch in range {
         let buffer_start = unsafe { VirtualAlloc(std::ptr::null_mut(), total_bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) };
         let buffer_start = buffer_start as *mut u8;
         if buffer_start.is_null() {
             panic!("Failed to allocate memory");
         }
+        println!(
+            "start of alloc'd virtual range: {:#0x} ({})",
+            buffer_start as u64,
+            DecomposedPointer::new(buffer_start as u64)
+        );
 
-        let bytes_to_touch = PAGE_SIZE * pages_to_touch;
-        let range = get_range(&write_direction, bytes_to_touch);
-
+        let range = get_range(&write_direction, pages_to_touch);
+        let mut prev_map_pattern = 0;
+        let mut prev_addr: *const u8 = std::ptr::null();
         let page_faults_begin = read_os_page_fault_count();
-        for index in range {
-            let is_start_of_page = index % 4096 == 0;
-            let mut pages_mapped_begin = 0;
+        for page_number in range {
+            // write one byte per page
+            let addr_to_write = unsafe { buffer_start.add(page_number * PAGE_SIZE) };
+            let pages_mapped_begin = read_os_page_fault_count();
+            unsafe { *addr_to_write = page_number as u8; }
+            let pages_mapped_end = read_os_page_fault_count();
 
-            let addr_to_write = unsafe { buffer_start.add(index) };
-
-            if is_start_of_page { pages_mapped_begin = read_os_page_fault_count(); }
-            unsafe { *addr_to_write = index as u8; }
-            if is_start_of_page {
-                let pages_mapped = read_os_page_fault_count() - pages_mapped_begin;
-                if pages_mapped == 0 { continue; }
-
-                let page_number = index / 4096;
+            let pages_mapped = pages_mapped_end - pages_mapped_begin;
+            if pages_to_touch == page_count
+                && !prev_addr.is_null()
+                && pages_mapped != prev_map_pattern
+                // On windows, a 16 page prefetch seems to be common, so just filter out all the
+                // noise of prefetching 16 pages then mapping none for a while (which is expected).
+                // At least, this is expected when writing pages in a forward pattern; when going
+                // backward Windows doesn't seem to ever prefetch...
+                && !(pages_mapped == 16 && prev_map_pattern == 0 || pages_mapped == 0 && prev_map_pattern == 16)
+            {
+                println!("mapping pattern changed");
                 println!(
-                    "first write to page {:03} mapped {:02} pages: addr {:#0x} ({})",
-                    page_number,
+                    "\tmapped this time: {:02} at addr {:#0x} ({})",
                     pages_mapped,
                     addr_to_write as u64,
-                    DecomposedPointer::new(addr_to_write as u64)
+                    DecomposedPointer::new(addr_to_write as u64),
                 );
+                println!(
+                    "\tmapped last time: {:02} at addr {:#0x} ({})",
+                    prev_map_pattern,
+                    prev_addr as u64,
+                    DecomposedPointer::new(prev_addr as u64)
+                );
+
+                prev_map_pattern = pages_mapped;
             }
 
+            prev_addr = addr_to_write;
         }
         let page_faults_end = read_os_page_fault_count();
 
@@ -104,7 +131,9 @@ fn main() {
             _ = writeln!(file, "{page_count}, {pages_to_touch}, {page_faults}, {extra_faults}");
         } 
 
-        println!("wrote to {pages_to_touch} pages, mapped {page_faults} pages leaving {extra_faults} unused\n");
+        if pages_to_touch == page_count - 1 {
+            println!("wrote to {pages_to_touch} pages, mapped {page_faults} pages leaving {extra_faults} unused\n");
+        }
 
         unsafe { VirtualFree(buffer_start as *mut c_void, 0, MEM_RELEASE); }
     }

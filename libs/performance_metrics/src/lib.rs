@@ -195,6 +195,9 @@ fn read_os_timer() -> u64 {
 #[inline(always)]
 pub fn read_cpu_timer() -> u64 { unsafe { _rdtsc() } }
 
+/// Retrieve the value of Windows' page fault counter.
+/// Fun fact: this _actually_ reports the number of pages that windows has mapped, not the number
+/// of page fault interrupts that have been generated, caught, or handled.
 pub fn read_os_page_fault_count() -> u64 {
     static mut PROCESS_HANDLE: OnceCell<winnt::HANDLE> = OnceCell::new();
 

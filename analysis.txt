@@ -1,0 +1,29 @@
+REPETITION TESTER
+Optimized for binary size, loop vectorization disabled (-C opt-level="z")
+
+loop in write_to_all_bytes
+
+// ...
+    let test_section = TimeTestSection::begin();
+    for (index, element) in buffer.iter_mut().enumerate() {
+        *element = index as u8;
+    }
+    test_section.end(buffer.len() as u64)
+// ...
+
+LOOP ASSEMBLY (EXCLUDING TEST SECTION START + END)
+00007FF70AA52A97  cmp  r14, rax
+00007FF70AA52A9A  jz   0x7ff70aa52aac <repetition_testing::write_to_all_bytes+0x3f>
+00007FF70AA52A9C  mov  rdx, rax
+00007FF70AA52A9F  inc  rdx
+00007FF70AA52AA2  jz   0x7ff70aa52adf <repetition_testing::write_to_all_bytes+0x72>
+00007FF70AA52AA4  mov  byte ptr [rbx+rax*1], al
+00007FF70AA52AA7  mov  rax, rdx
+00007FF70AA52AAA  jmp  0x7ff70aa52a97 <repetition_testing::write_to_all_bytes+0x2a>
+
+Total bytes CPU needs to process loop: 0x7FF70AA52AAA - 0x7FF70AA52A97 = 19 bytes
+Best reported throughput: 3.2890gb/s --> ~3.29gb/s
+My CPU frequency: 4.25 GHz
+(4.25 * 1000^3) / (3.5 * 1024^3) ~= 1.2 cycles per loop iteration
+
+Therefore, 19 bytes in ~1.2 cycles.

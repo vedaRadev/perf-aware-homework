@@ -56,19 +56,19 @@ impl TimeTestResult {
         let mut stdout = stdout();
 
         let seconds = self.cycles_elapsed as f64 / cpu_freq as f64;
-        _ = stdout.write_all(format!(
+        _ = stdout.write(format!(
                 "{} ({:.4}ms)",
                 self.cycles_elapsed,
                 seconds * 1000.0
         ).as_bytes());
 
         let gb_per_second = self.bytes_processed as f64 / GIGABYTES as f64 / seconds;
-        _ = stdout.write_all(format!(" {:.4}gb/s", gb_per_second).as_bytes());
+        _ = stdout.write(format!(" {:.4}gb/s", gb_per_second).as_bytes());
 
-        _ = stdout.write_all(format!(" {:.4}pf", self.page_faults).as_bytes());
+        _ = stdout.write(format!(" {:.4}pf", self.page_faults).as_bytes());
         if self.page_faults > 0 && self.bytes_processed > 0 {
             let kb_per_page_fault = self.bytes_processed as f64 / self.page_faults as f64 / 1024.0;
-            _ = stdout.write_all(format!(" ({:.4}k/pf)", kb_per_page_fault).as_bytes());
+            _ = stdout.write(format!(" ({:.4}k/pf)", kb_per_page_fault).as_bytes());
         }
     }
 }
@@ -126,6 +126,8 @@ impl RepetitionTester {
 
     fn run_tests(&self, file_name: &str) -> ! {
         let cpu_freq = get_cpu_frequency_estimate(1000);
+        println!("cpu frequency estimate: {cpu_freq}\n");
+
         let mut stdout = stdout();
         // The amount of cycles to wait for a new min before moving on to the next test.
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
@@ -168,8 +170,8 @@ impl RepetitionTester {
                         // printing through stdout with print! and println! only actually flush the buffer when
                         // a newline is encountered. If we want to use carriage return and update a single line
                         // then we have to write to and flush stdout manually.
-                        _ = stdout.write_all(&LINE_CLEAR);
-                        _ = stdout.write_all(b"\rMin: ");
+                        _ = stdout.write(&LINE_CLEAR);
+                        _ = stdout.write(b"\rMin: ");
                         test_result.print_result(cpu_freq);
                         _ = stdout.flush();
 
@@ -200,6 +202,8 @@ impl RepetitionTester {
     }
 }
 
+#[inline(never)]
+#[no_mangle]
 fn read_with_fs_read(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, .. } = params;
 
@@ -208,6 +212,8 @@ fn read_with_fs_read(params: TimeTestParams) -> TimeTestResult {
     test_section.end(file_size)
 }
 
+#[inline(never)]
+#[no_mangle]
 fn buffered_read(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, buffer } = params;
     let mut file = BufReader::new(fs::File::open(file_name).expect("Failed to open file"));
@@ -224,6 +230,8 @@ fn buffered_read(params: TimeTestParams) -> TimeTestResult {
 }
 
 // NOTE This will fail if the file size exceeds 64 bits.
+#[inline(never)]
+#[no_mangle]
 fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, buffer } = params;
     let file_name_cstr = CString::new(file_name).expect("failed to create cstring version of filename");
@@ -270,6 +278,8 @@ fn read_with_win_read(params: TimeTestParams) -> TimeTestResult {
     test_result
 }
 
+#[inline(never)]
+#[no_mangle]
 fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { file_name, file_size, buffer } = params;
     let file_name_cstr = CString::new(file_name).unwrap();
@@ -296,34 +306,27 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
     test_result
 }
 
+#[inline(never)]
+#[no_mangle]
 fn write_to_all_bytes(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
-    let mut index = 0usize;
-    let buffer_len = buffer.len();
-
     let test_section = TimeTestSection::begin();
-    while index != buffer_len {
-        buffer[index] = index as u8;
-        index += 1;
+    for (index, element) in buffer.iter_mut().enumerate() {
+        *element = index as u8;
     }
-
-    test_section.end(buffer_len as u64)
+    test_section.end(buffer.len() as u64)
 }
 
+#[inline(never)]
 fn write_to_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
-    let mut index = 0usize;
-    let buffer_len = buffer.len();
-
     let test_section = TimeTestSection::begin();
-    while index != buffer_len {
-        buffer[buffer_len - 1 - index] = index as u8;
-        index += 1;
+    for (index, element) in buffer.iter_mut().enumerate().rev() {
+        *element = index as u8;
     }
-
-    test_section.end(buffer_len as u64)
+    test_section.end(buffer.len() as u64)
 }
 
 fn with_buffer_alloc(test: fn(TimeTestParams) -> TimeTestResult) -> TimeTest {

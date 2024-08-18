@@ -41,10 +41,6 @@ write all bytes asm function, mov replaced with nop
 best: 3.9544gb/s
 1.0010 cycles per iteration
 
-write all bytes asm function, mov replaced with nop (alt)
-best: 3.9488gb/s
-1.0023 cycles per iteration
-
 write all bytes asm function, mov removed entirely
 best: 3.9531gb/s
 1.0013 cycles per iteration

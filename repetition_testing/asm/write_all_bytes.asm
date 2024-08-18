@@ -42,18 +42,6 @@ nop_all_bytes_asm:
 .loop_end:
     ret
 
-    ; second version that's more like Casey's from listing 132
-    ; seeing some interesting behavior in the repetition tester where nop_all_bytes_asm has really
-    ; low throughput compared to the rest of the asm functions.
-nop_all_bytes_alt_asm:
-    xor rax, rax
-.loop_start:
-    db 0x0f, 0x1f, 0x00 ; 3-byte NOP
-    inc rax
-    cmp rax, rcx
-    jb .loop_start
-    ret
-
     ; removed the mov instruction entirely instead of replacing it with an instruction of similar
     ; length
 cmp_all_bytes_asm:

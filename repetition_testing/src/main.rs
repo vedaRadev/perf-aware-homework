@@ -42,7 +42,6 @@ use std::{
 extern "C" {
     fn mov_all_bytes_asm(len: u64, buf: *mut u8);
     fn nop_all_bytes_asm(len: u64, buf: *mut u8);
-    fn nop_all_bytes_alt_asm(len: u64, buf: *mut u8);
     fn cmp_all_bytes_asm(len: u64, buf: *mut u8);
     fn dec_all_bytes_asm(len: u64, buf: *mut u8);
 }
@@ -351,17 +350,6 @@ fn write_all_bytes_nop_asm(params: TimeTestParams) -> TimeTestResult {
 
 #[inline(never)]
 #[no_mangle]
-fn write_all_bytes_nop_alt_asm(params: TimeTestParams) -> TimeTestResult {
-    let TimeTestParams { buffer, .. } = params;
-    let buf_len = buffer.len() as u64;
-
-    let test_section = TimeTestSection::begin();
-    unsafe { nop_all_bytes_alt_asm(buf_len, buffer.as_mut_ptr()); }
-    test_section.end(buf_len)
-}
-
-#[inline(never)]
-#[no_mangle]
 fn write_all_bytes_cmp_asm(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
     let buf_len = buffer.len() as u64;
@@ -418,7 +406,6 @@ fn main() {
     repetition_tester.register_test(Box::new(write_all_bytes), "write to all bytes");
     repetition_tester.register_test(Box::new(write_all_bytes_mov_asm), "write all bytes asm");
     repetition_tester.register_test(Box::new(write_all_bytes_nop_asm), "write all bytes asm, mov replaced with nop");
-    repetition_tester.register_test(Box::new(write_all_bytes_nop_alt_asm), "write all bytes asm, mov replaced with nop (alt)");
     repetition_tester.register_test(Box::new(write_all_bytes_cmp_asm), "write all bytes asm, mov removed entirely");
     repetition_tester.register_test(Box::new(write_all_bytes_dec_asm), "write all bytes asm, only decrement rcx to 0");
 

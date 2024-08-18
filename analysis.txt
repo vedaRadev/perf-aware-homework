@@ -24,3 +24,39 @@ Best reported throughput: 3.8630gb/s -> ~3.86gb/s
 My CPU frequency: 4.25 GHz
 (4.25 * 1000^3) / (3.86 * 1024^3) ~=  1.025 cycles per loop iteration
 So, 11 bytes in ~1.025 cycles
+
+
+
+ANALYSIS OF WRITE ALL BYTES FUNCTIONS (NORMAL + ASM)
+
+write all bytes rust function
+best: 3.9060gb/s
+1.0133 cycles per iteration
+
+write all bytes asm function
+best: 3.9050gb/s
+1.0136 cycles per iteration
+
+write all bytes asm function, mov replaced with nop
+best: 3.9544gb/s
+1.0010 cycles per iteration
+
+write all bytes asm function, mov replaced with nop (alt)
+best: 3.9488gb/s
+1.0023 cycles per iteration
+
+write all bytes asm function, mov removed entirely
+best: 3.9531gb/s
+1.0013 cycles per iteration
+
+write all bytes asm function, just decrementing
+best: 3.9396gb/s
+1.0046 cycles per iteration
+
+Conclusion:
+Observations match Casey's findings from the "Linking Directly to ASM for Experimentation" video.
+Did originally encounter some weird behavior where one of the above functions would randomly drop to
+a throughput of about 1.9gb/s. For some reason forcing the TimeTestSection functions to be
+#[inline(never)] fixed that issue. TimeTestSection::begin and TimeTestSection::end were previously
+set to #[inline(always)], so maybe that was causing the compiler to output code in a weird manner in
+some cases.

@@ -38,6 +38,15 @@ use std::{
     ffi::CString,
 };
 
+#[link(name = "write_all_bytes_asm")]
+extern "C" {
+    fn mov_all_bytes_asm(len: u64, buf: *mut u8);
+    fn nop_all_bytes_asm(len: u64, buf: *mut u8);
+    fn nop_all_bytes_alt_asm(len: u64, buf: *mut u8);
+    fn cmp_all_bytes_asm(len: u64, buf: *mut u8);
+    fn dec_all_bytes_asm(len: u64, buf: *mut u8);
+}
+
 /// Number of seconds to wait for a new hi/lo count before ending the test.
 const MAX_WAIT_TIME_SECONDS: f64 = 5.0;
 const MEGABYTES: u64 = 1024 * 1024;
@@ -78,7 +87,7 @@ struct TimeTestSection {
 }
 
 impl TimeTestSection {
-    #[inline(always)]
+    #[inline(never)]
     fn begin() -> Self {
         let page_faults_begin = read_os_page_fault_count();
         let cycles_begin = read_cpu_timer();
@@ -91,7 +100,7 @@ impl TimeTestSection {
         Self { result }
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn end(mut self, bytes_processed: u64) -> TimeTestResult {
         self.result.cycles_elapsed = read_cpu_timer() - self.result.cycles_elapsed;
         self.result.page_faults = read_os_page_fault_count() - self.result.page_faults;
@@ -308,7 +317,7 @@ fn read_with_libc_fread(params: TimeTestParams) -> TimeTestResult {
 
 #[inline(never)]
 #[no_mangle]
-fn write_to_all_bytes(params: TimeTestParams) -> TimeTestResult {
+fn write_all_bytes(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
     let test_section = TimeTestSection::begin();
@@ -319,7 +328,63 @@ fn write_to_all_bytes(params: TimeTestParams) -> TimeTestResult {
 }
 
 #[inline(never)]
-fn write_to_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
+#[no_mangle]
+fn write_all_bytes_mov_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { mov_all_bytes_asm(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn write_all_bytes_nop_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { nop_all_bytes_asm(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn write_all_bytes_nop_alt_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { nop_all_bytes_alt_asm(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn write_all_bytes_cmp_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { cmp_all_bytes_asm(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn write_all_bytes_dec_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { dec_all_bytes_asm(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[allow(dead_code)]
+#[inline(never)]
+fn write_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
     let TimeTestParams { buffer, .. } = params;
 
     let test_section = TimeTestSection::begin();
@@ -329,6 +394,7 @@ fn write_to_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
     test_section.end(buffer.len() as u64)
 }
 
+#[allow(dead_code)]
 fn with_buffer_alloc(test: fn(TimeTestParams) -> TimeTestResult) -> TimeTest {
     Box::new(
         move |params: TimeTestParams| {
@@ -349,16 +415,23 @@ fn main() {
     let file_name = args.next().unwrap();
 
     let mut repetition_tester = RepetitionTester::new();
-    repetition_tester.register_test(Box::new(write_to_all_bytes), "write to all bytes");
-    repetition_tester.register_test(with_buffer_alloc(write_to_all_bytes), "write to all bytes with buffer alloc");
-    repetition_tester.register_test(Box::new(write_to_all_bytes_backward), "write to all bytes backward");
-    repetition_tester.register_test(with_buffer_alloc(write_to_all_bytes_backward), "write to all bytes backward with buffer alloc");
-    repetition_tester.register_test(Box::new(read_with_fs_read), "rust fs::read");
-    repetition_tester.register_test(Box::new(buffered_read), "rust buffered read");
-    repetition_tester.register_test(with_buffer_alloc(buffered_read), "rust buffered read with buffer alloc");
-    repetition_tester.register_test(Box::new(read_with_libc_fread), "libc fread");
-    repetition_tester.register_test(with_buffer_alloc(read_with_libc_fread), "libc fread with buffer alloc");
-    repetition_tester.register_test(Box::new(read_with_win_read), "windows read");
-    repetition_tester.register_test(with_buffer_alloc(read_with_win_read), "windows read with buffer alloc");
+    repetition_tester.register_test(Box::new(write_all_bytes), "write to all bytes");
+    repetition_tester.register_test(Box::new(write_all_bytes_mov_asm), "write all bytes asm");
+    repetition_tester.register_test(Box::new(write_all_bytes_nop_asm), "write all bytes asm, mov replaced with nop");
+    repetition_tester.register_test(Box::new(write_all_bytes_nop_alt_asm), "write all bytes asm, mov replaced with nop (alt)");
+    repetition_tester.register_test(Box::new(write_all_bytes_cmp_asm), "write all bytes asm, mov removed entirely");
+    repetition_tester.register_test(Box::new(write_all_bytes_dec_asm), "write all bytes asm, only decrement rcx to 0");
+
+    // repetition_tester.register_test(with_buffer_alloc(write_all_bytes), "write to all bytes with buffer alloc");
+    // repetition_tester.register_test(Box::new(write_all_bytes_backward), "write to all bytes backward");
+    // repetition_tester.register_test(with_buffer_alloc(write_all_bytes_backward), "write to all bytes backward with buffer alloc");
+    // repetition_tester.register_test(Box::new(read_with_fs_read), "rust fs::read");
+    // repetition_tester.register_test(Box::new(buffered_read), "rust buffered read");
+    // repetition_tester.register_test(with_buffer_alloc(buffered_read), "rust buffered read with buffer alloc");
+    // repetition_tester.register_test(Box::new(read_with_libc_fread), "libc fread");
+    // repetition_tester.register_test(with_buffer_alloc(read_with_libc_fread), "libc fread with buffer alloc");
+    // repetition_tester.register_test(Box::new(read_with_win_read), "windows read");
+    // repetition_tester.register_test(with_buffer_alloc(read_with_win_read), "windows read with buffer alloc");
+
     repetition_tester.run_tests(&file_name);
 }

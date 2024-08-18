@@ -1,4 +1,5 @@
 REPETITION TESTER
+Compiled with a release profile to elide bounds/overflow checking wherever possible.
 Optimized for binary size, loop vectorization disabled (-C opt-level="z")
 
 loop in write_to_all_bytes
@@ -12,18 +13,14 @@ loop in write_to_all_bytes
 // ...
 
 LOOP ASSEMBLY (EXCLUDING TEST SECTION START + END)
-00007FF70AA52A97  cmp  r14, rax
-00007FF70AA52A9A  jz   0x7ff70aa52aac <repetition_testing::write_to_all_bytes+0x3f>
-00007FF70AA52A9C  mov  rdx, rax
-00007FF70AA52A9F  inc  rdx
-00007FF70AA52AA2  jz   0x7ff70aa52adf <repetition_testing::write_to_all_bytes+0x72>
-00007FF70AA52AA4  mov  byte ptr [rbx+rax*1], al
-00007FF70AA52AA7  mov  rax, rdx
-00007FF70AA52AAA  jmp  0x7ff70aa52a97 <repetition_testing::write_to_all_bytes+0x2a>
+00007FF6115A2572  49 39 c6      cmp     r14, rax ; r14 must be loaded with the size of the buffer
+00007FF6115A2575  74 08         jz      0x7ff6115a257f <repetition_testing::write_to_all_bytes+0x37>
+00007FF6115A2577  88 04 03      mov     byte ptr [rbx+rax*1], al
+00007FF6115A257A  48 ff c0      inc     rax
+00007FF6115A257D  eb f3         jmp     0x7ff6115a2572 <repetition_testing::write_to_all_bytes+0x2a>
 
-Total bytes CPU needs to process loop: 0x7FF70AA52AAA - 0x7FF70AA52A97 = 19 bytes
-Best reported throughput: 3.2890gb/s --> ~3.29gb/s
+Total bytes CPU needs to process loop: 0x00007FF6115A257D - 0x00007FF6115A2572 = 11 bytes
+Best reported throughput: 3.8630gb/s -> ~3.86gb/s
 My CPU frequency: 4.25 GHz
-(4.25 * 1000^3) / (3.5 * 1024^3) ~= 1.2 cycles per loop iteration
-
-Therefore, 19 bytes in ~1.2 cycles.
+(4.25 * 1000^3) / (3.86 * 1024^3) ~=  1.025 cycles per loop iteration
+So, 11 bytes in ~1.025 cycles

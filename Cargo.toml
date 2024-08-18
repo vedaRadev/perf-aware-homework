@@ -24,6 +24,10 @@ debug = true
 opt-level = "z"
 debug = true
 
+[profile.release.package.repetition_testing]
+opt-level = "z"
+debug = true
+
 [profile.dev.package.generator]
 opt-level = 2
 debug = true

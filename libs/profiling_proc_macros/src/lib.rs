@@ -118,8 +118,8 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
     while !matches!(function_token_tree.peek(), Some(TokenTree::Ident(ident)) if ident.to_string() == "fn") {
         function_decl_prelude.push(function_token_tree.next().unwrap());
     }
+    function_decl_prelude.push(function_token_tree.next().unwrap()); // "fn" keyword
 
-    function_token_tree.next(); // skip past "fn"
     let function_name = function_token_tree.next().expect("expected function name");
     let mut function_signature: Vec<TokenTree> = Vec::with_capacity(32);
     while !matches!(function_token_tree.peek(), Some(TokenTree::Group(group)) if matches!(group.delimiter(), Delimiter::Brace)) {
@@ -151,7 +151,6 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
 
     let mut instrumented = TokenStream::new();
     instrumented.extend(function_decl_prelude);
-    instrumented.extend(TokenStream::from_str("fn"));
     instrumented.extend(iter::once(function_name));
     instrumented.extend(function_signature);
     instrumented.extend(iter::once(TokenTree::Group(Group::new(Delimiter::Brace, instrumented_function_body))));

@@ -6,7 +6,7 @@
 
     section .text
 
-    ; Going to link to this in rust and use the c calling convention
+    ; Going to link to this in rust and use the x64 windows calling convention
     ; rcx - contains buffer length
     ; rdx - pointer to buffer
     ;
@@ -16,8 +16,8 @@
     ; -C opt-level=z (optimize for binary size, no loop vectorization)
     ; release profile (to force elision of overflow/bounds checks wherever possible)
     ;
-    ; Slight modifications have been made to allow Rust to call the function using the C calling
-    ; convention on x64 windows.
+    ; Slight modifications have been made to allow Rust to call the function using x64 windows
+    ; calling conventions
 mov_all_bytes_asm:
     xor rax, rax
 .loop_start:

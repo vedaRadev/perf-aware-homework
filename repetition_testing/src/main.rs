@@ -46,6 +46,13 @@ extern "C" {
     fn dec_all_bytes_asm(len: u64, buf: *mut u8);
 }
 
+#[link(name = "nop_loops_asm")]
+extern "C" {
+    fn nop_3x1_all_bytes(len: u64, buf: *mut u8);
+    fn nop_1x3_all_bytes(len: u64, buf: *mut u8);
+    fn nop_1x9_all_bytes(len: u64, buf: *mut u8);
+}
+
 /// Number of seconds to wait for a new hi/lo count before ending the test.
 const MAX_WAIT_TIME_SECONDS: f64 = 5.0;
 const MEGABYTES: u64 = 1024 * 1024;
@@ -370,6 +377,39 @@ fn write_all_bytes_dec_asm(params: TimeTestParams) -> TimeTestResult {
     test_section.end(buf_len)
 }
 
+#[inline(never)]
+#[no_mangle]
+fn nop_3x1_all_bytes_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { nop_3x1_all_bytes(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn nop_1x3_all_bytes_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { nop_1x3_all_bytes(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
+#[inline(never)]
+#[no_mangle]
+fn nop_1x9_all_bytes_asm(params: TimeTestParams) -> TimeTestResult {
+    let TimeTestParams { buffer, .. } = params;
+    let buf_len = buffer.len() as u64;
+
+    let test_section = TimeTestSection::begin();
+    unsafe { nop_1x9_all_bytes(buf_len, buffer.as_mut_ptr()); }
+    test_section.end(buf_len)
+}
+
 #[allow(dead_code)]
 #[inline(never)]
 fn write_all_bytes_backward(params: TimeTestParams) -> TimeTestResult {
@@ -403,11 +443,16 @@ fn main() {
     let file_name = args.next().unwrap();
 
     let mut repetition_tester = RepetitionTester::new();
-    repetition_tester.register_test(Box::new(write_all_bytes), "write to all bytes");
-    repetition_tester.register_test(Box::new(write_all_bytes_mov_asm), "write all bytes asm");
-    repetition_tester.register_test(Box::new(write_all_bytes_nop_asm), "write all bytes asm, mov replaced with nop");
-    repetition_tester.register_test(Box::new(write_all_bytes_cmp_asm), "write all bytes asm, mov removed entirely");
-    repetition_tester.register_test(Box::new(write_all_bytes_dec_asm), "write all bytes asm, only decrement rcx to 0");
+
+    // repetition_tester.register_test(Box::new(write_all_bytes), "write to all bytes");
+    // repetition_tester.register_test(Box::new(write_all_bytes_mov_asm), "write all bytes asm");
+    // repetition_tester.register_test(Box::new(write_all_bytes_nop_asm), "write all bytes asm, mov replaced with nop");
+    // repetition_tester.register_test(Box::new(write_all_bytes_cmp_asm), "write all bytes asm, mov removed entirely");
+    // repetition_tester.register_test(Box::new(write_all_bytes_dec_asm), "write all bytes asm, only decrement rcx to 0");
+
+    repetition_tester.register_test(Box::new(nop_3x1_all_bytes_asm), "nop 3x1 all bytes");
+    repetition_tester.register_test(Box::new(nop_1x3_all_bytes_asm), "nop 1x3 all bytes");
+    repetition_tester.register_test(Box::new(nop_1x9_all_bytes_asm), "nop 1x9 all bytes");
 
     // repetition_tester.register_test(with_buffer_alloc(write_all_bytes), "write to all bytes with buffer alloc");
     // repetition_tester.register_test(Box::new(write_all_bytes_backward), "write to all bytes backward");

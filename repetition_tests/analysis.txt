@@ -37,7 +37,7 @@ write all bytes asm function
 best: 3.9050gb/s
 1.0136 cycles per iteration
 
-write all bytes asm function, mov replaced with nop
+write all bytes asm function, mov replaced with 3-byte nop
 best: 3.9544gb/s
 1.0010 cycles per iteration
 
@@ -56,3 +56,5 @@ a throughput of about 1.9gb/s. For some reason forcing the TimeTestSection funct
 #[inline(never)] fixed that issue. TimeTestSection::begin and TimeTestSection::end were previously
 set to #[inline(always)], so maybe that was causing the compiler to output code in a weird manner in
 some cases.
+
+Basically, there's something about that mov instruction that's slowing us down...

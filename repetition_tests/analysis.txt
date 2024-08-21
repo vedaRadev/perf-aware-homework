@@ -58,3 +58,75 @@ set to #[inline(always)], so maybe that was causing the compiler to output code 
 some cases.
 
 Basically, there's something about that mov instruction that's slowing us down...
+
+
+NOP LOOP REP TESTS ANALYSIS
+Compiled with dev profile using -C opt-level=z
+For some reason using the release profile is giving weird and somewhat unexpected results even
+though it's running the exact same assembly and measuring time in the exact same ways...
+The only thing I noticed was that maybe the location in the binary of the test code, the timing
+code, and the assembly code might have been different between the release and dev profiles...
+
+====== nop 3x1 all bytes ======
+Min: 268574330 (63.1923ms) 3.9562gb/s 0pf
+Max: 292086288 (68.7243ms) 3.6377gb/s 0pf
+Avg: 270574940 (63.6630ms) 3.9269gb/s 0pf
+
+====== nop 1x3 all bytes ======
+Min: 268599065 (63.1981ms) 3.9558gb/s 0pf
+Max: 315568771 (74.2495ms) 3.3670gb/s 0pf
+Avg: 272565674 (64.1314ms) 3.8982gb/s 0pf
+
+====== nop 3x3 all bytes ======
+Min: 270788240 (63.7132ms) 3.9238gb/s 0pf
+Max: 308137943 (72.5011ms) 3.4482gb/s 0pf
+Avg: 272479330 (64.1111ms) 3.8995gb/s 0pf
+
+====== nop 1x9 all bytes ======
+Min: 537352915 (126.4326ms) 1.9773gb/s 0pf
+Max: 590508217 (138.9394ms) 1.7993gb/s 0pf
+Avg: 546492330 (128.5830ms) 1.9443gb/s 0pf
+
+====== nop 5x3 all bytes ======
+Min: 360979317 (84.9340ms) 2.9435gb/s 0pf
+Max: 403110248 (94.8469ms) 2.6358gb/s 0pf
+Avg: 366563157 (86.2478ms) 2.8986gb/s 0pf
+
+====== nop 1x15 all bytes ======
+Min: 805970425 (189.6350ms) 1.3183gb/s 0pf
+Max: 860760108 (202.5263ms) 1.2344gb/s 0pf
+Avg: 811325180 (190.8949ms) 1.3096gb/s 0pf
+
+So the front end of the CPU suddenly begins to tank after about 3 3-byte nops...
+For completeness, the results of the release test are included here.
+This test was compiled with opt-level=z as well.
+
+====== nop 3x1 all bytes ======
+Min: 268607140 (63.2000ms) 3.9557gb/s 0pf
+Max: 308021384 (72.4737ms) 3.4495gb/s 0pf
+Avg: 270548212 (63.6567ms) 3.9273gb/s 0pf
+
+====== nop 1x3 all bytes ======
+Min: 537237527 (126.4054ms) 1.9778gb/s 0pf
+Max: 557909570 (131.2693ms) 1.9045gb/s 0pf
+Avg: 541612930 (127.4349ms) 1.9618gb/s 0pf
+
+====== nop 3x3 all bytes ======
+Min: 268814880 (63.2489ms) 3.9526gb/s 0pf
+Max: 340899555 (80.2095ms) 3.1168gb/s 0pf
+Avg: 273065053 (64.2489ms) 3.8911gb/s 0pf
+
+====== nop 1x9 all bytes ======
+Min: 537225755 (126.4027ms) 1.9778gb/s 0pf
+Max: 589634314 (138.7338ms) 1.8020gb/s 0pf
+Avg: 542055239 (127.5390ms) 1.9602gb/s 0pf
+
+====== nop 5x3 all bytes ======
+Min: 537344840 (126.4307ms) 1.9774gb/s 0pf
+Max: 549804078 (129.3622ms) 1.9326gb/s 0pf
+Avg: 540604533 (127.1976ms) 1.9654gb/s 0pf
+
+====== nop 1x15 all bytes ======
+Min: 805960012 (189.6325ms) 1.3183gb/s 0pf
+Max: 878984854 (206.8144ms) 1.2088gb/s 0pf
+Avg: 813267162 (191.3518ms) 1.3065gb/s 0pf

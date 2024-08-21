@@ -97,14 +97,6 @@ impl<TestParams> RepetitionTester<TestParams> {
         // The amount of cycles to wait for a new min before moving on to the next test.
         let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
 
-        // NOTE Allocating memory here but explicitly not deallocating because we never actually
-        // return from the loop. The only way to end the loop is to quit the process which will
-        // free up our memory anyway.
-        // Also, allocating memory for an array like this instead of just doing vec![0u8; file_size]
-        // because I want to make sure that we're not touching the memory before trying to actually
-        // write to it. Don't want to take page fault hits on the memory until we actually need to
-        // write to it. I'm not sure if slice::from_raw_parts touches the memory; hopefully not.
-
         loop {
             for (do_test, test_name) in &self.tests {
                 let mut cycles_since_last_min = 0u64;

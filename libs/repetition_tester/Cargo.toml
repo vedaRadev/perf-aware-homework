@@ -1,0 +1,9 @@
+[package]
+name = "repetition_tester"
+edition = "2021"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+performance_metrics = { path = "../performance_metrics" }

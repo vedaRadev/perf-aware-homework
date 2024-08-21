@@ -97,12 +97,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "repetition_testing"
+name = "repetition_tester"
+version = "0.1.0"
+dependencies = [
+ "performance_metrics",
+]
+
+[[package]]
+name = "reptest_asm_buffer_writes"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+]
+
+[[package]]
+name = "reptest_asm_nop_loops"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+]
+
+[[package]]
+name = "reptest_file_reads"
 version = "0.1.0"
 dependencies = [
  "libc",
- "performance_metrics",
+ "repetition_tester",
  "winapi",
+]
+
+[[package]]
+name = "reptest_simple_buffer_writes"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
 ]
 
 [[package]]

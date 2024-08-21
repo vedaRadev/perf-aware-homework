@@ -1,12 +1,11 @@
 [package]
-name = "repetition_testing"
+name = "reptest_file_reads"
 edition = "2021"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
-build = "build.rs"
 
 [dependencies]
+repetition_tester = { path = "../../libs/repetition_tester" }
 libc = "0.2.155"
-performance_metrics = { path = "../libs/performance_metrics" }
 winapi = { version = "0.3.9", features = ["errhandlingapi", "fileapi", "handleapi"] }

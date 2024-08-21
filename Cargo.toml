@@ -3,8 +3,8 @@ members = [
     "libs/*",
     "generator",
     "processor",
-    "repetition_testing",
     "probe_page_fault_behavior",
+    "repetition_tests/*",
 ]
 
 resolver = "2"
@@ -20,14 +20,39 @@ description = "Coursework for Casey Muratori's 'Performance Aware Programming' c
 opt-level = 0
 debug = true
 
-[profile.dev.package.repetition_testing]
-opt-level = "z"
-debug = true
-
-[profile.release.package.repetition_testing]
-opt-level = "z"
-debug = true
-
 [profile.dev.package.generator]
 opt-level = 2
+debug = true
+
+# REPETITION TEST PROFILES
+[profile.dev.package.reptest_file_reads]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_file_reads]
+opt-level = "z"
+debug = true
+
+[profile.dev.package.reptest_simple_buffer_writes]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_simple_buffer_writes]
+opt-level = "z"
+debug = true
+
+[profile.dev.package.reptest_asm_buffer_writes]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_asm_buffer_writes]
+opt-level = "z"
+debug = true
+
+[profile.dev.package.reptest_asm_nop_loops]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_asm_nop_loops]
+opt-level = "z"
 debug = true

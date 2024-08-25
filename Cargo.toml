@@ -56,3 +56,11 @@ debug = true
 [profile.release.package.reptest_asm_nop_loops]
 opt-level = "z"
 debug = true
+
+[profile.dev.package.reptest_branch_prediction]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_branch_prediction]
+opt-level = "z"
+debug = true

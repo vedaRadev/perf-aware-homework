@@ -118,6 +118,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_branch_prediction"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "repetition_tester",
+ "winapi",
+]
+
+[[package]]
 name = "reptest_file_reads"
 version = "0.1.0"
 dependencies = [

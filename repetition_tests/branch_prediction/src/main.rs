@@ -73,13 +73,15 @@ fn branch_every_4(SharedParams { buffer }: &mut SharedParams) -> TimeTestResult 
 }
 
 fn branch_rust_rand(SharedParams { buffer }: &mut SharedParams) -> TimeTestResult {
-    static mut RNG: OnceCell<StdRng> = OnceCell::new();
+    // Using SmallRng because StdRng was so slow for some reason that it took way too long to even
+    // do a single iteration of this test...
+    static mut RNG: OnceCell<SmallRng> = OnceCell::new();
     // Have to do this for now because get_mut_or_init is unstable...
     let rng = match unsafe { RNG.get_mut() } {
         Some(rng) => rng,
         None => {
             unsafe {
-                _ = RNG.set(StdRng::seed_from_u64(0));
+                _ = RNG.set(SmallRng::seed_from_u64(0));
                 RNG.get_mut().unwrap()
             }
         }

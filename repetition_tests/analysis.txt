@@ -1,3 +1,9 @@
+--------------------------------------------------
+My desktop cpu: AMD Ryzen 9 5900X, 12-Core (24 logical processors), 4251 Mhz base clock
+Family: 19h (Zen 3)
+Guide: https://www.amd.com/content/dam/amd/en/documents/processor-tech-docs/software-optimization-guides/56665.zip
+--------------------------------------------------
+
 REPETITION TESTER
 Compiled with a release profile to elide bounds/overflow checking wherever possible.
 Optimized for binary size, loop vectorization disabled (-C opt-level="z")
@@ -26,7 +32,7 @@ My CPU frequency: 4.25 GHz
 So, 11 bytes in ~1.025 cycles
 
 
-
+--------------------------------------------------
 ANALYSIS OF WRITE ALL BYTES FUNCTIONS (NORMAL + ASM)
 
 write all bytes rust function
@@ -60,6 +66,7 @@ some cases.
 Basically, there's something about that mov instruction that's slowing us down...
 
 
+--------------------------------------------------
 NOP LOOP REP TESTS ANALYSIS
 Compiled with dev profile using -C opt-level=z
 For some reason using the release profile is giving weird and somewhat unexpected results even
@@ -130,3 +137,41 @@ Avg: 540604533 (127.1976ms) 1.9654gb/s 0pf
 Min: 805960012 (189.6325ms) 1.3183gb/s 0pf
 Max: 878984854 (206.8144ms) 1.2088gb/s 0pf
 Avg: 813267162 (191.3518ms) 1.3065gb/s 0pf
+
+--------------------------------------------------
+BRANCH PREDICTION TESTS
+
+====== branch never ======
+Min: 271847383 (63.9625ms) 3.9085gb/s 0pf
+Max: 277948852 (65.3981ms) 3.8227gb/s 0pf
+Avg: 273610915 (64.3774ms) 3.8833gb/s 0pf
+
+====== branch always ======
+Min: 538339638 (126.6650ms) 1.9737gb/s 0pf
+Max: 580577540 (136.6030ms) 1.8301gb/s 0pf
+Avg: 544086416 (128.0171ms) 1.9529gb/s 0pf
+
+====== branch every 2 ======
+Min: 404965372 (95.2836ms) 2.6237gb/s 0pf
+Max: 433574885 (102.0151ms) 2.4506gb/s 0pf
+Avg: 412483060 (97.0524ms) 2.5759gb/s 0pf
+
+====== branch every 3 ======
+Min: 525751903 (123.7032ms) 2.0210gb/s 0pf
+Max: 1010188535 (237.6854ms) 1.0518gb/s 0pf
+Avg: 839721044 (197.5765ms) 1.2653gb/s 0pf
+
+====== branch every 4 ======
+Min: 337020580 (79.2970ms) 3.1527gb/s 0pf
+Max: 352578513 (82.9576ms) 3.0136gb/s 0pf
+Avg: 342325217 (80.5451ms) 3.1039gb/s 0pf
+
+====== branch rust rand ======
+Min: 3310016408 (778.8078ms) 0.3210gb/s 0pf
+Max: 3354717737 (789.3255ms) 0.3167gb/s 0pf
+Avg: 3326073578 (782.5859ms) 0.3195gb/s 0pf
+
+====== branch bcrypt rand ======
+Min: 3310146670 (778.8384ms) 0.3210gb/s 0pf
+Max: 3352123793 (788.7152ms) 0.3170gb/s 0pf
+Avg: 3319194412 (780.9673ms) 0.3201gb/s 0pf

@@ -6,3 +6,4 @@ haversine_answers.f64
 **/*.csv
 **/*.rdbg
 **/*.pdf
+**/*.xlsx

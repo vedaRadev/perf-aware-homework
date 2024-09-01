@@ -14,8 +14,6 @@ version = "0.1.0"
 authors = ["Ryan Armstrong"]
 description = "Coursework for Casey Muratori's 'Performance Aware Programming' course."
 
-# opt-level 1 seems to vectorize loops which I don't think we want at this point
-# so just use opt-level 0 for now.
 [profile.dev.package.processor]
 opt-level = 0
 debug = true
@@ -24,51 +22,8 @@ debug = true
 opt-level = 2
 debug = true
 
-# REPETITION TEST PROFILES
-[profile.dev.package.reptest_file_reads]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_file_reads]
-opt-level = "z"
-debug = true
-
-[profile.dev.package.reptest_simple_buffer_writes]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_simple_buffer_writes]
-opt-level = "z"
-debug = true
-
-[profile.dev.package.reptest_asm_buffer_writes]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_asm_buffer_writes]
-opt-level = "z"
-debug = true
-
-[profile.dev.package.reptest_asm_nop_loops]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_asm_nop_loops]
-opt-level = "z"
-debug = true
-
-[profile.dev.package.reptest_branch_prediction]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_branch_prediction]
-opt-level = "z"
-debug = true
-
-[profile.dev.package.reptest_code_alignment]
-opt-level = "z"
-debug = true
-
-[profile.release.package.reptest_code_alignment]
+# Profile for Repetition Tests
+[profile.reptest]
+inherits = "dev"
 opt-level = "z"
 debug = true

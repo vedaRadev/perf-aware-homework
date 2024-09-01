@@ -127,6 +127,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_code_alignment"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+]
+
+[[package]]
 name = "reptest_file_reads"
 version = "0.1.0"
 dependencies = [

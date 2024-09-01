@@ -64,3 +64,11 @@ debug = true
 [profile.release.package.reptest_branch_prediction]
 opt-level = "z"
 debug = true
+
+[profile.dev.package.reptest_code_alignment]
+opt-level = "z"
+debug = true
+
+[profile.release.package.reptest_code_alignment]
+opt-level = "z"
+debug = true

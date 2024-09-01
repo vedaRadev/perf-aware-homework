@@ -74,6 +74,11 @@ though it's running the exact same assembly and measuring time in the exact same
 The only thing I noticed was that maybe the location in the binary of the test code, the timing
 code, and the assembly code might have been different between the release and dev profiles...
 
+UPDATE: 2024-09-01
+Turns out this is probably something to do with the code alignment. Maybe some of the asm was
+straddling the edge of a cache line somewhere so the loops were maybe taking extra cycles to run
+because of cache misses.
+
 ====== nop 3x1 all bytes ======
 Min: 268574330 (63.1923ms) 3.9562gb/s 0pf
 Max: 292086288 (68.7243ms) 3.6377gb/s 0pf
@@ -175,3 +180,31 @@ Avg: 3326073578 (782.5859ms) 0.3195gb/s 0pf
 Min: 3310146670 (778.8384ms) 0.3210gb/s 0pf
 Max: 3352123793 (788.7152ms) 0.3170gb/s 0pf
 Avg: 3319194412 (780.9673ms) 0.3201gb/s 0pf
+
+--------------------------------------------------
+CODE ALIGNMENT TESTS
+
+====== loop_aligned_64 ======
+Min: 16777257 (3.9475ms) 3.9582gb/s 0pf
+Max: 17378547 (4.0890ms) 3.8213gb/s 0pf
+Avg: 16964324 (3.9915ms) 3.9146gb/s 0pf
+
+====== loop_aligned_1 ======
+Min: 16777215 (3.9475ms) 3.9582gb/s 0pf
+Max: 17915407 (4.2153ms) 3.7068gb/s 0pf
+Avg: 16840081 (3.9623ms) 3.9435gb/s 0pf
+
+====== loop_aligned_15 ======
+Min: 16777215 (3.9475ms) 3.9582gb/s 0pf
+Max: 17372385 (4.0875ms) 3.8226gb/s 0pf
+Avg: 16886883 (3.9733ms) 3.9325gb/s 0pf
+
+====== loop_aligned_31 ======
+Min: 16777215 (3.9475ms) 3.9582gb/s 0pf
+Max: 36698282 (8.6346ms) 1.8096gb/s 0pf
+Avg: 16882190 (3.9722ms) 3.9336gb/s 0pf
+
+====== loop_aligned_63 ======
+Min: 33554430 (7.8949ms) 1.9791gb/s 0pf
+Max: 34336302 (8.0789ms) 1.9341gb/s 0pf
+Avg: 33846440 (7.9636ms) 1.9620gb/s 0pf

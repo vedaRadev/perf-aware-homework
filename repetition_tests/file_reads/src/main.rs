@@ -198,9 +198,9 @@ fn main() {
     repetition_tester.register_test(with_buffer_alloc(write_all_bytes), "write to all bytes with buffer alloc");
     repetition_tester.register_test(read_with_fs_read, "rust fs::read");
     repetition_tester.register_test(buffered_read, "rust buffered read");
-    repetition_tester.register_test(buffered_read, "rust buffered read with buffer alloc");
+    repetition_tester.register_test(with_buffer_alloc(buffered_read), "rust buffered read with buffer alloc");
     repetition_tester.register_test(read_with_libc_fread, "libc fread");
-    repetition_tester.register_test(read_with_libc_fread, "libc fread with buffer alloc");
+    repetition_tester.register_test(with_buffer_alloc(read_with_libc_fread), "libc fread with buffer alloc");
     repetition_tester.register_test(read_with_win_read, "windows read");
     repetition_tester.register_test(with_buffer_alloc(read_with_win_read), "windows read with buffer alloc");
     repetition_tester.run_tests();

@@ -143,6 +143,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_read_exec_ports"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+]
+
+[[package]]
 name = "reptest_simple_buffer_writes"
 version = "0.1.0"
 dependencies = [

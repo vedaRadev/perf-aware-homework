@@ -208,3 +208,32 @@ Avg: 16882190 (3.9722ms) 3.9336gb/s 0pf
 Min: 33554430 (7.8949ms) 1.9791gb/s 0pf
 Max: 34336302 (8.0789ms) 1.9341gb/s 0pf
 Avg: 33846440 (7.9636ms) 1.9620gb/s 0pf
+
+--------------------------------------------------
+PROBING READ EXECUTION PORTS
+
+Results:
+
+====== 1 read ======
+Min: 4194282 (0.9869ms) 3.9582gb/s 0pf
+Max: 8830183 (2.0776ms) 1.8801gb/s 0pf
+Avg: 4205617 (0.9895ms) 3.9476gb/s 0pf
+
+====== 2 reads ======
+Min: 2097162 (0.4934ms) 7.9164gb/s 0pf
+Max: 2745925 (0.6461ms) 6.0460gb/s 0pf
+Avg: 2120079 (0.4988ms) 7.8308gb/s 0pf
+
+====== 3 reads ======
+Min: 1398122 (0.3290ms) 11.8745gb/s 0pf
+Max: 1896775 (0.4463ms) 8.7527gb/s 0pf
+Avg: 1404620 (0.3305ms) 11.8196gb/s 0pf
+
+====== 4 reads ======
+Min: 1398080 (0.3290ms) 11.8749gb/s 0pf
+Max: 1874335 (0.4410ms) 8.8575gb/s 0pf
+Avg: 1403615 (0.3303ms) 11.8280gb/s 0pf
+
+So it seems like my processor (zen 3 amd) has at least 3 execution ports it can utilize.
+The manual (see "2.12 Load-Store Unit" in the amd family 19h software optimization guide) seems to confirm this:
+    "The load-store (LS) unit ... contains three largely independent pipelines enabling the execution of three 256-bit memory operations per cycle."

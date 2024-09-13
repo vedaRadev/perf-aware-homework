@@ -49,9 +49,9 @@ fn main() {
     let buffer = vec![0u8; BUFFER_SIZE];
 
     let mut repetition_tester = RepetitionTester::new(buffer);
-    repetition_tester.register_test(test_read_x1, "1 read");
-    repetition_tester.register_test(test_read_x2, "2 reads");
-    repetition_tester.register_test(test_read_x3, "3 reads");
-    repetition_tester.register_test(test_read_x4, "4 reads");
+    repetition_tester.register_test(test_read_x1, "1 read per iteration");
+    repetition_tester.register_test(test_read_x2, "2 reads per iteration");
+    repetition_tester.register_test(test_read_x3, "3 reads per iteration");
+    repetition_tester.register_test(test_read_x4, "4 reads per iteration");
     repetition_tester.run_tests();
 }

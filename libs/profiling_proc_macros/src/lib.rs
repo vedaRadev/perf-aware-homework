@@ -122,6 +122,8 @@ pub fn profile_function(attribute: TokenStream, function: TokenStream) -> TokenS
 
     let function_name = function_token_tree.next().expect("expected function name");
     let mut function_signature: Vec<TokenTree> = Vec::with_capacity(32);
+    // FIXME this might break if we destructure a struct in the args... or if we use a set of
+    // braces anywhere before the start of the function body for that matter.
     while !matches!(function_token_tree.peek(), Some(TokenTree::Group(group)) if matches!(group.delimiter(), Delimiter::Brace)) {
         function_signature.push(function_token_tree.next().unwrap());
     }

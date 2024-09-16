@@ -1,0 +1,9 @@
+[package]
+name = "reptest_read_widths"
+edition = "2021"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+repetition_tester = { path = "../../libs/repetition_tester" }

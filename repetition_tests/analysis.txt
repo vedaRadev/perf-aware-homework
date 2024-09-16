@@ -266,3 +266,38 @@ Avg: 2111109 (0.4967ms) 7.8641gb/s 0pf
 Observe that we really only get better best-case performance with 2 writes per iteration (though interestingly our worst case keeps getting better...).
 This makes sense because according to the amd family 19h software optimization guide section 2.12 "Load-Store Unit", "A maximum of two of the [three] memory
 operations can be stores, with a maximum of one store if the store is a 128- or 256-bit store."
+
+--------------------------------------------------
+READ WIDTH TESTS
+
+Note that we're starting to get into the territory where the gb/s throughput number doesn't really
+make a lot of sense for the tests we're doing. ONLY compare it to other gb/s values for this
+specific suite of tests because it's more of a relative comparison at this point than a legitimate
+measurement of data throughput.
+
+But regardless, notice how each time we double the number of bytes we read per instruction, we
+basically double our performance.
+
+See notes in the src/read_widths.asm file of the test.
+
+Results:
+
+====== 3 4-byte (32-bit) reads ======
+Min: 1398122 (0.3290ms) 47.4980gb/s 0pf
+Max: 2092487 (0.4923ms) 31.7364gb/s 0pf
+Avg: 1411420 (0.3321ms) 47.0505gb/s 0pf
+
+====== 3 8-byte (64-bit) reads ======
+Min: 699040 (0.1645ms) 94.9988gb/s 0pf
+Max: 1019745 (0.2399ms) 65.1222gb/s 0pf
+Avg: 703955 (0.1656ms) 94.3356gb/s 0pf
+
+====== 3 16-byte (128-bit) reads ======
+Min: 524280 (0.1234ms) 126.6651gb/s 0pf
+Max: 784890 (0.1847ms) 84.6080gb/s 0pf
+Avg: 524938 (0.1235ms) 126.5064gb/s 0pf
+
+====== 3 32-byte (256-bit) reads ======
+Min: 262267 (0.0617ms) 253.2076gb/s 0pf
+Max: 532695 (0.1253ms) 124.6642gb/s 0pf
+Avg: 268421 (0.0632ms) 247.4024gb/s 0pf

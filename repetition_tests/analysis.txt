@@ -301,3 +301,26 @@ Avg: 524938 (0.1235ms) 126.5064gb/s 0pf
 Min: 262267 (0.0617ms) 253.2076gb/s 0pf
 Max: 532695 (0.1253ms) 124.6642gb/s 0pf
 Avg: 268421 (0.0632ms) 247.4024gb/s 0pf
+
+--------------------------------------------------
+POWER OF 2 CACHE SIZE TESTS
+
+So windows reports the following CPU cache sizes:
+L1: 768kb
+L2: 6mb
+L3: 64mb
+
+But running my tests, I encountered bandwidth drops at the following power-of-two points:
+NOTE these are best-case measurements.
+256kb -> 512kb (126gb -> 115gb)
+512kb -> 1mb (115gb -> 105gb)
+16mb -> 32mb (105gb -> 55gb)
+32mb -> 64mb (55gb -> 37gb)
+64mb -> 128mb (37gb -> 32gb)
+
+So I'm definitely moving out of L1 into L2 somewhere between 256kb and 1mb.
+L1 size of 768kb would make sense here.
+
+I'm moving out of L2 into L3 somewhere between 1mb and 32mb.
+
+I'm moving out of L3 into RAM somwhere between 32mb and 128mb.

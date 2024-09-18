@@ -53,24 +53,42 @@ fn main() {
 
     let buffer_start = buffer_start as *const u8;
 
+    const MASK_4KB: u64 = 2u64.pow(12) - 1;
+    const MASK_8KB: u64 = 2u64.pow(13) - 1;
+    const MASK_16KB: u64 = 2u64.pow(14) - 1;
+    const MASK_32KB: u64 = 2u64.pow(15) - 1;
+    const MASK_64KB: u64 = 2u64.pow(16) - 1;
+    const MASK_128KB: u64 = 2u64.pow(17) - 1;
+    const MASK_256KB: u64 = 2u64.pow(18) - 1;
     const MASK_512KB: u64 = 2u64.pow(19) - 1;
     const MASK_1MB: u64 = 2u64.pow(20) - 1;
+    const MASK_2MB: u64 = 2u64.pow(21) - 1;
     const MASK_4MB: u64 = 2u64.pow(22) - 1;
     const MASK_8MB: u64 = 2u64.pow(23) - 1;
     const MASK_16MB: u64 = 2u64.pow(24) - 1;
     const MASK_32MB: u64 = 2u64.pow(25) - 1;
     const MASK_64MB: u64 = 2u64.pow(26) - 1;
     const MASK_128MB: u64 = 2u64.pow(27) - 1;
+    const MASK_256MB: u64 = 2u64.pow(28) - 1;
 
     let test_args = TestArgs { buffer_size: BUFFER_SIZE as u64, buffer_start };
     let mut repetition_tester = RepetitionTester::new(test_args);
+    repetition_tester.register_test(create_test!(MASK_4KB), "4kb");
+    repetition_tester.register_test(create_test!(MASK_8KB), "8kb");
+    repetition_tester.register_test(create_test!(MASK_16KB), "16kb");
+    repetition_tester.register_test(create_test!(MASK_32KB), "32kb");
+    repetition_tester.register_test(create_test!(MASK_64KB), "64kb");
+    repetition_tester.register_test(create_test!(MASK_128KB), "128kb");
+    repetition_tester.register_test(create_test!(MASK_256KB), "256kb");
     repetition_tester.register_test(create_test!(MASK_512KB), "512kb");
     repetition_tester.register_test(create_test!(MASK_1MB), "1mb");
+    repetition_tester.register_test(create_test!(MASK_2MB), "2mb");
     repetition_tester.register_test(create_test!(MASK_4MB), "4mb");
     repetition_tester.register_test(create_test!(MASK_8MB), "8mb");
     repetition_tester.register_test(create_test!(MASK_16MB), "16mb");
     repetition_tester.register_test(create_test!(MASK_32MB), "32mb");
     repetition_tester.register_test(create_test!(MASK_64MB), "64mb");
     repetition_tester.register_test(create_test!(MASK_128MB), "128mb");
+    repetition_tester.register_test(create_test!(MASK_256MB), "256mb");
     repetition_tester.run_tests();
 }

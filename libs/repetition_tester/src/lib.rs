@@ -71,6 +71,13 @@ impl TimeTestSection {
 pub trait TimeTestFunction<TestParams>: Fn(&mut TestParams) -> TimeTestResult {}
 impl<TestParams, T> TimeTestFunction<TestParams> for T where T: Fn(&mut TestParams) -> TimeTestResult {}
 
+pub struct TestResults {
+    pub min: TimeTestResult,
+    pub avg: TimeTestResult,
+    pub max: TimeTestResult
+}
+pub type SuiteResults = Vec<(&'static str, TestResults)>;
+
 pub struct RepetitionTester<TestParams> {
     shared_test_params: TestParams,
     tests: Vec<(Box<dyn TimeTestFunction<TestParams>>, &'static str)>
@@ -89,68 +96,86 @@ impl<TestParams> RepetitionTester<TestParams> {
         self.tests.push((Box::new(test), test_name));
     }
 
+    /// Run through all tests and collect results.
+    /// Wait wait_time_seconds for a new min before moving on to the next test (NOTE: This is measured
+    /// in cumulative TEST time, not general time passed).
+    fn internal_run_tests(&mut self, wait_time_seconds: f64, cpu_freq: u64) -> SuiteResults {
+        let mut stdout = stdout();
+        let max_cycles_to_wait = (wait_time_seconds * cpu_freq as f64) as u64;
+        let mut suite_results = SuiteResults::new();
+
+        for (do_test, test_name) in &self.tests {
+            let mut cycles_since_last_min = 0u64;
+            let mut total = TimeTestResult::default();
+            let mut min = TimeTestResult { cycles_elapsed: u64::MAX, ..Default::default() };
+            let mut max = TimeTestResult { cycles_elapsed: u64::MIN, ..Default::default() };
+            let mut iterations = 0;
+
+            println!("====== {test_name} ======");
+            loop {
+                iterations += 1;
+
+                let test_result = do_test(&mut self.shared_test_params);
+                total.cycles_elapsed += test_result.cycles_elapsed;
+                total.bytes_processed += test_result.bytes_processed;
+                total.page_faults += test_result.page_faults;
+
+                cycles_since_last_min += test_result.cycles_elapsed;
+
+                if test_result.cycles_elapsed > max.cycles_elapsed { max = test_result; }
+                else if test_result.cycles_elapsed < min.cycles_elapsed {
+                    cycles_since_last_min = 0;
+
+                    // printing through stdout with print! and println! only actually flush the buffer when
+                    // a newline is encountered. If we want to use carriage return and update a single line
+                    // then we have to write to and flush stdout manually.
+                    _ = stdout.write(&LINE_CLEAR);
+                    _ = stdout.write(b"\rMin: ");
+                    test_result.print_result(cpu_freq);
+                    _ = stdout.flush();
+
+                    min = test_result;
+                }
+
+                if cycles_since_last_min > max_cycles_to_wait {
+                    break;
+                }
+            }
+
+            println!();
+
+            print!("Max: ");
+            max.print_result(cpu_freq);
+            println!();
+
+            print!("Avg: ");
+            let mut average = total;
+            average.cycles_elapsed /= iterations;
+            average.bytes_processed /= iterations;
+            average.page_faults /= iterations;
+            average.print_result(cpu_freq);
+            println!();
+            println!();
+
+            suite_results.push((test_name, TestResults { min, avg: average, max }));
+        }
+
+        suite_results
+    }
+
+    /// Do one run of each test and return the collected results.
+    pub fn run_tests_and_collect_results(&mut self) -> SuiteResults {
+        let cpu_freq = get_cpu_frequency_estimate(1000);
+        println!("cpu frequency estimate: {cpu_freq}\n");
+
+        self.internal_run_tests(MAX_WAIT_TIME_SECONDS, cpu_freq)
+    }
+
+    /// Run tests forever.
     pub fn run_tests(&mut self) -> ! {
         let cpu_freq = get_cpu_frequency_estimate(1000);
         println!("cpu frequency estimate: {cpu_freq}\n");
 
-        let mut stdout = stdout();
-        // The amount of cycles to wait for a new min before moving on to the next test.
-        let max_cycles_to_wait = (MAX_WAIT_TIME_SECONDS * cpu_freq as f64) as u64;
-
-        loop {
-            for (do_test, test_name) in &self.tests {
-                let mut cycles_since_last_min = 0u64;
-                let mut total = TimeTestResult::default();
-                let mut min = TimeTestResult { cycles_elapsed: u64::MAX, ..Default::default() };
-                let mut max = TimeTestResult { cycles_elapsed: u64::MIN, ..Default::default() };
-                let mut iterations = 0;
-
-                println!("====== {test_name} ======");
-                loop {
-                    iterations += 1;
-
-                    let test_result = do_test(&mut self.shared_test_params);
-                    total.cycles_elapsed += test_result.cycles_elapsed;
-                    total.bytes_processed += test_result.bytes_processed;
-                    total.page_faults += test_result.page_faults;
-
-                    cycles_since_last_min += test_result.cycles_elapsed;
-
-                    if test_result.cycles_elapsed > max.cycles_elapsed { max = test_result; }
-                    else if test_result.cycles_elapsed < min.cycles_elapsed {
-                        cycles_since_last_min = 0;
-
-                        // printing through stdout with print! and println! only actually flush the buffer when
-                        // a newline is encountered. If we want to use carriage return and update a single line
-                        // then we have to write to and flush stdout manually.
-                        _ = stdout.write(&LINE_CLEAR);
-                        _ = stdout.write(b"\rMin: ");
-                        test_result.print_result(cpu_freq);
-                        _ = stdout.flush();
-
-                        min = test_result;
-                    }
-
-                    if cycles_since_last_min > max_cycles_to_wait {
-                        break;
-                    }
-                }
-
-                println!();
-
-                print!("Max: ");
-                max.print_result(cpu_freq);
-                println!();
-
-                print!("Avg: ");
-                let mut average = total;
-                average.cycles_elapsed /= iterations;
-                average.bytes_processed /= iterations;
-                average.page_faults /= iterations;
-                average.print_result(cpu_freq);
-                println!();
-                println!();
-            }
-        }
+        loop { _ = self.internal_run_tests(MAX_WAIT_TIME_SECONDS, cpu_freq); }
     }
 }

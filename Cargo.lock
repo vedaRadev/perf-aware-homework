@@ -127,6 +127,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_cache_size"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+ "winapi",
+]
+
+[[package]]
 name = "reptest_code_alignment"
 version = "0.1.0"
 dependencies = [

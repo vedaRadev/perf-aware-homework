@@ -76,7 +76,17 @@ pub struct TestResults {
     pub avg: TimeTestResult,
     pub max: TimeTestResult
 }
-pub type SuiteResults = Vec<(&'static str, TestResults)>;
+
+pub struct SuiteResults {
+    pub cpu_freq: u64,
+    pub results: Vec<(&'static str, TestResults)>,
+}
+
+impl SuiteResults {
+    fn new(cpu_freq: u64) -> Self {
+        Self { cpu_freq, results: Vec::new() }
+    }
+}
 
 pub struct RepetitionTester<TestParams> {
     shared_test_params: TestParams,
@@ -102,7 +112,7 @@ impl<TestParams> RepetitionTester<TestParams> {
     fn internal_run_tests(&mut self, wait_time_seconds: f64, cpu_freq: u64) -> SuiteResults {
         let mut stdout = stdout();
         let max_cycles_to_wait = (wait_time_seconds * cpu_freq as f64) as u64;
-        let mut suite_results = SuiteResults::new();
+        let mut suite_results = SuiteResults::new(cpu_freq);
 
         for (do_test, test_name) in &self.tests {
             let mut cycles_since_last_min = 0u64;
@@ -157,7 +167,7 @@ impl<TestParams> RepetitionTester<TestParams> {
             println!();
             println!();
 
-            suite_results.push((test_name, TestResults { min, avg: average, max }));
+            suite_results.results.push((test_name, TestResults { min, avg: average, max }));
         }
 
         suite_results

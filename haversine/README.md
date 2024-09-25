@@ -50,17 +50,16 @@ A simple program designed to probe Windows' page faulting behavior.
 
 cargo r --bin probe_page_fault_behavior [page_count: int] (--write-direction) (--output-file)
 ```
-`--write-direction`:
+- `--write-direction`:
     "forward"/"backward", defaults to "forward".
     Whether to write pages from front to back or back to front.
 
-`--output-file`:
+- `--output-file`:
     Name of file to dump CSV stats to.
     Useful for viewing data in a spreadsheet and creating charts.
 
 Note: It's recommended to run this program with a large page_count (e.g. 1024 or more) then load the results up into a spreadsheet and create a chart from the data.
 
-<br>
 If an output filename is supplied, the program will loop from N = 0 to `page_count`, allocating N pages from `VirtualAlloc` each iteration.
 It will then write 1 byte to each page and record a few statistics, primarily the number of "page faults" that Windows reports occurred (hint: it's not actually reporting the number of page faults).
 

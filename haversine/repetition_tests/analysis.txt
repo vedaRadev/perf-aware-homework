@@ -270,13 +270,8 @@ operations can be stores, with a maximum of one store if the store is a 128- or 
 --------------------------------------------------
 READ WIDTH TESTS
 
-Note that we're starting to get into the territory where the gb/s throughput number doesn't really
-make a lot of sense for the tests we're doing. ONLY compare it to other gb/s values for this
-specific suite of tests because it's more of a relative comparison at this point than a legitimate
-measurement of data throughput.
-
-But regardless, notice how each time we double the number of bytes we read per instruction, we
-basically double our performance.
+Hotice how each time we double the number of bytes we read per instruction, we basically double our
+performance.
 
 See notes in the src/read_widths.asm file of the test.
 

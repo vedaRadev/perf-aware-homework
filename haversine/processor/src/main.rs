@@ -37,12 +37,11 @@ fn main() {
     // perf metrics is required
     let mut args = env::args().skip(1);
     if args.len() == 0 {
-        println!("usage <[] = required, () = optional>: [json input file] [cpu freq sample time millis] (validation file)");
+        println!("usage <[] = required, () = optional>: [json input file] (validation file)");
         process::exit(1);
     }
 
     let haversine_json_filename: String = args.next().unwrap();
-    let cpu_frequency_sample_millis: u64 = args.next().unwrap().parse().expect("expected millis as u64");
     let haversine_validation_filename: Option<String> = args.next();
     drop(args);
 
@@ -103,5 +102,5 @@ fn main() {
         println!("\tdiff: {}", expected_average_haversine - average_haversine);
     }
 
-    end_and_print_profile_info!(cpu_frequency_sample_millis);
+    end_and_print_profile_info!(1000);
 }

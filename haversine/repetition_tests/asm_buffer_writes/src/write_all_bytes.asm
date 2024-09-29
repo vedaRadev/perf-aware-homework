@@ -20,6 +20,7 @@
     ; calling conventions
 mov_all_bytes_asm:
     xor rax, rax
+    align 64
 .loop_start:
     cmp rcx, rax
     jz .loop_end
@@ -33,6 +34,7 @@ mov_all_bytes_asm:
     ; length (3 in this case)
 nop_all_bytes_asm:
     xor rax, rax
+    align 64
 .loop_start:
     cmp rcx, rax
     jz .loop_end
@@ -46,6 +48,7 @@ nop_all_bytes_asm:
     ; length
 cmp_all_bytes_asm:
     xor rax, rax
+    align 64
 .loop_start:
     cmp rcx, rax
     jz .loop_end
@@ -57,6 +60,7 @@ cmp_all_bytes_asm:
     ; entirely different function which just decrements to 0 then returns
     ; rcx must not be 0 or it'll underflow
 dec_all_bytes_asm:
+    align 64
 .loop_start:
     dec rcx
     jnz .loop_start

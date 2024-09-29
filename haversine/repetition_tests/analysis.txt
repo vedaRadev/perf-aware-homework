@@ -65,6 +65,23 @@ some cases.
 
 Basically, there's something about that mov instruction that's slowing us down...
 
+UPDATE 2024-09-27:
+The weird behavior of some asm functions randomly dropping to 1.9gb/s (basically halved perf from
+the others) is because of code alignment. To account for this I've updated the assembly to align
+loop starts to 64-byte boundaries so all following instructions fit within instruction cache.
+
+UPDATE 2024-09-27:
+I think the reason why the versions using MOV are just slightly slower than the others is due to how
+many store execution units are available on a Zen 3 CPU. According to the optimization guide, the
+load-store unit can handle only two memory store operations per cycle (or one if the store is 128-
+or 256-bit). Comparatively, the integer execution unit has four units that can do general purpose integer
+operations (add, sub, maybe shift, etc).
+So I don't think that the MOV instruction is adding some additional dependency. Sure, it needs to
+know what's in AL but it has that in the register file as soon as the INC of the previous iteration
+is performed. I just think that due to the fewer number of execution units available to do the
+memory move operation itself, the CPU is just slightly bottlenecked and can't chew threw as many of
+those dependency chains concurrently (does this last sentence even make sense?).
+
 
 --------------------------------------------------
 NOP LOOP REP TESTS ANALYSIS
@@ -270,7 +287,7 @@ operations can be stores, with a maximum of one store if the store is a 128- or 
 --------------------------------------------------
 READ WIDTH TESTS
 
-Hotice how each time we double the number of bytes we read per instruction, we basically double our
+Notice how each time we double the number of bytes we read per instruction, we basically double our
 performance.
 
 See notes in the src/read_widths.asm file of the test.

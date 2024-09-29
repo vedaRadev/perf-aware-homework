@@ -3,6 +3,10 @@ The [official perfaware repository](https://github.com/cmuratori/computer_enhanc
 
 I am currently in the process of adding markdown documentation to this repository.
 
+## Build Dependencies
+- [rust toolchain](https://www.rust-lang.org/tools/install)
+- [nasm](https://www.nasm.us/) (for some tests in the haversine portion)
+
 ## 8086_sim (perfaware part 1)
 This is a partial decoder/simulator of the original 16-bit [Intel 8086](https://en.wikipedia.org/wiki/Intel_8086) from 1979.
 I did not implement decoding and simulation of _every_ instruction the 8086 supports, nor did I implement more advanced things like the 8086's memory segmentation model; the primary goal of part 1 is to understand how x86 assembly functions and to highlight certain facts such as its instruction set being variable-length.

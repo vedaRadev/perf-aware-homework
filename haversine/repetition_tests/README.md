@@ -73,8 +73,11 @@ cargo r --profile reptest --bin reptest_branch_prediction
 ```
 
 ### cache_size
-TODO update when finished with cache_size suite + analysis
+Suite investigating various CPU cache sizes using power-of-two address masks.
+When a consecutive test is significantly slower than the previous test you know you've probably forced the CPU to grab data from the next cache level or from RAM.
+It also highlights just how fast cache operations are compared to loads from RAM.
 
+To run:
 ```
 cargo r --profile reptest --bin reptest_cache_size
 ```

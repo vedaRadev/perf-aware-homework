@@ -6,6 +6,8 @@ use repetition_tester::{
     RepetitionTester,
     TimeTestSection,
     TimeTestResult,
+    SuiteData,
+    TestResults,
 };
 
 #[link(name = "read_buffer_masked_asm")]
@@ -18,6 +20,9 @@ struct TestArgs {
     buffer_start: *const u8,
 }
 
+// Pulled this so that I could debug the assembly routine.
+#[inline(never)]
+#[no_mangle]
 fn do_cache_test(buffer_size: u64, buffer_start: *const u8, mask: u64) -> TimeTestResult {
     let section = TimeTestSection::begin();
     unsafe { read_buffer_masked(buffer_size, buffer_start, mask); }
@@ -25,7 +30,7 @@ fn do_cache_test(buffer_size: u64, buffer_start: *const u8, mask: u64) -> TimeTe
 }
 
 macro_rules! create_test {
-    ($mask:ident) => {
+    ($mask:expr) => {
         |args: &mut TestArgs| -> TimeTestResult {
             let TestArgs { buffer_size, buffer_start } = *args;
             do_cache_test(buffer_size, buffer_start, $mask)
@@ -34,8 +39,8 @@ macro_rules! create_test {
 }
 
 fn main() {
-    // 128mb... should be larger than any typical L3 cache
-    const BUFFER_SIZE: usize = 2usize.pow(27); 
+    // 256mb... should be larger than any typical L3 cache
+    const BUFFER_SIZE: usize = 2usize.pow(28); 
     const PAGE_SIZE: usize = 4096;
     // BUFFER_SIZE and PAGE_SIZE should be powers of 2. Just being lazy with integer division here.
     const NUM_PAGES: usize = BUFFER_SIZE / PAGE_SIZE;
@@ -90,5 +95,11 @@ fn main() {
     repetition_tester.register_test(create_test!(MASK_64MB), "64mb");
     repetition_tester.register_test(create_test!(MASK_128MB), "128mb");
     repetition_tester.register_test(create_test!(MASK_256MB), "256mb");
-    repetition_tester.run_tests();
+
+    // run tests and print out min results in a format that can be dumped into a table and graphed
+    let SuiteData { cpu_freq, results } = repetition_tester.run_tests_and_collect_results();
+    println!("size, throughput (gb/s)");
+    for (test_name, TestResults { min, .. }) in results {
+        println!("{test_name}, {:.4},", min.get_gbs_throughput(cpu_freq));
+    }
 }

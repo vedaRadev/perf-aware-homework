@@ -322,17 +322,34 @@ L1: 768kb
 L2: 6mb
 L3: 64mb
 
-But running my tests, I encountered bandwidth drops at the following power-of-two points:
-NOTE these are best-case measurements.
-256kb -> 512kb (126gb -> 115gb)
-512kb -> 1mb (115gb -> 105gb)
-16mb -> 32mb (105gb -> 55gb)
-32mb -> 64mb (55gb -> 37gb)
-64mb -> 128mb (37gb -> 32gb)
+From https://www.techpowerup.com/cpu-specs/ryzen-9-5900x.c2363:
+L1: 64kb (per core)
+L2: 512kb (per core)
+L3: 64mb
 
-So I'm definitely moving out of L1 into L2 somewhere between 256kb and 1mb.
-L1 size of 768kb would make sense here.
+RESULTS
+size	throughput (gb/s)
+4kb     253.3044
+8kb     251.8601
+16kb	253.0583
+32kb	253.1915
+64kb	126.6599
+128kb	126.6587
+256kb	126.6587
+512kb	117.8753
+1mb     105.1437
+2mb     105.0006
+4mb     105.3564
+8mb     104.7841
+16mb	95.5434
+32mb	55.4547
+64mb	35.6757
+128mb	31.1088
+256mb   29.0678
 
-I'm moving out of L2 into L3 somewhere between 1mb and 32mb.
+Remember that L1 cache is usually split in half with separate sections for code and data. That would
+explain why even though we have 64kb L1 per core we see a drop from 32kb to 64kb. We see a slight
+drop from 256kb to 512kb even though we have 512kb per core because our code takes up part of the
+cache, so we can't fit a whole 512kb sub-buffer into the 512kb cache.
 
-I'm moving out of L3 into RAM somwhere between 32mb and 128mb.
+I'm not really sure if I trust that 64mb L3 cache size number. May need more granular tests.

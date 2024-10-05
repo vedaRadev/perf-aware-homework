@@ -19,6 +19,11 @@ pub struct TimeTestResult {
 }
 
 impl TimeTestResult {
+    pub fn get_gbs_throughput(&self, cpu_freq: u64) -> f64 {
+        let seconds = self.cycles_elapsed as f64 / cpu_freq as f64;
+        self.bytes_processed as f64 / GIGABYTES as f64 / seconds
+    }
+
     fn print_result(&self, cpu_freq: u64) {
         let mut stdout = stdout();
 
@@ -77,12 +82,12 @@ pub struct TestResults {
     pub max: TimeTestResult
 }
 
-pub struct SuiteResults {
+pub struct SuiteData {
     pub cpu_freq: u64,
     pub results: Vec<(&'static str, TestResults)>,
 }
 
-impl SuiteResults {
+impl SuiteData {
     fn new(cpu_freq: u64) -> Self {
         Self { cpu_freq, results: Vec::new() }
     }
@@ -109,10 +114,10 @@ impl<TestParams> RepetitionTester<TestParams> {
     /// Run through all tests and collect results.
     /// Wait wait_time_seconds for a new min before moving on to the next test (NOTE: This is measured
     /// in cumulative TEST time, not general time passed).
-    fn internal_run_tests(&mut self, wait_time_seconds: f64, cpu_freq: u64) -> SuiteResults {
+    fn internal_run_tests(&mut self, wait_time_seconds: f64, cpu_freq: u64) -> SuiteData {
         let mut stdout = stdout();
         let max_cycles_to_wait = (wait_time_seconds * cpu_freq as f64) as u64;
-        let mut suite_results = SuiteResults::new(cpu_freq);
+        let mut suite_results = SuiteData::new(cpu_freq);
 
         for (do_test, test_name) in &self.tests {
             let mut cycles_since_last_min = 0u64;
@@ -174,7 +179,7 @@ impl<TestParams> RepetitionTester<TestParams> {
     }
 
     /// Do one run of each test and return the collected results.
-    pub fn run_tests_and_collect_results(&mut self) -> SuiteResults {
+    pub fn run_tests_and_collect_results(&mut self) -> SuiteData {
         let cpu_freq = get_cpu_frequency_estimate(1000);
         println!("cpu frequency estimate: {cpu_freq}\n");
 

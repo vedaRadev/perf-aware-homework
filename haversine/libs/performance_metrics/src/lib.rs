@@ -218,11 +218,13 @@ pub fn read_os_page_fault_count() -> u64 {
     proc_mem_counters.PageFaultCount.into()
 }
 
-/// Given a sample interval in milliseconds, returns an estimate of how many CPU timer ticks occur
-/// in that interval.
-pub fn get_cpu_frequency_estimate(ms_to_wait: u64) -> u64 {
+/// Given a sample interval in milliseconds, estimates CPU frequency in cycles per second by using
+/// Windows' OS timer to measure how many CPU cycles have occurred in the time interval. Do a
+/// little bit of math and you have your CPU frequency estimate. We do it this way because there is
+/// no x64 intrinsic (that I know of) for getting the CPU clock rate.
+pub fn get_cpu_frequency_estimate(sample_interval_millis: u64) -> u64 {
     let os_timer_frequency = get_os_timer_frequency();
-    let os_wait_time = os_timer_frequency * ms_to_wait / 1000;
+    let os_wait_time = os_timer_frequency * sample_interval_millis / 1000;
 
     let mut os_elapsed: u64 = 0;
     let cpu_start = read_cpu_timer();

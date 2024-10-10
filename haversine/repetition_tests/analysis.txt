@@ -327,29 +327,52 @@ L1: 64kb (per core)
 L2: 512kb (per core)
 L3: 64mb
 
-RESULTS
-size	throughput (gb/s)
-4kb     253.3044
-8kb     251.8601
-16kb	253.0583
-32kb	253.1915
-64kb	126.6599
-128kb	126.6587
-256kb	126.6587
-512kb	117.8753
-1mb     105.1437
-2mb     105.0006
-4mb     105.3564
-8mb     104.7841
-16mb	95.5434
-32mb	55.4547
-64mb	35.6757
-128mb	31.1088
-256mb   29.0678
+4kb	    253.1921
+8kb	    249.7821
+16kb	253.1844
+24kb	246.2609
+30kb	247.6308
+31kb	247.8063
+32kb	252.5144
+40kb	127.3201
+48kb	126.7835
+64kb	126.6634
+128kb	126.6615
+256kb	126.6615
+300kb	126.6604
+350kb	126.6332
+400kb	126.658
+450kb	126.5103
+512kb	118.2206
+1mb	    104.6816
+2mb	    104.7321
+4mb	    104.7206
+6mb	    104.2203
+8mb	    103.553
+12mb	105.0173
+16mb	103.4035
+24mb	93.0089
+32mb	53.4944
+40mb	45.4983
+48mb	41.0435
+56mb	37.6805
+60mb	36.9164
+62mb	37.0097
+63mb	36.1865
+64mb	35.4803
+128mb	30.131
+256mb	28.9991
+
 
 Remember that L1 cache is usually split in half with separate sections for code and data. That would
 explain why even though we have 64kb L1 per core we see a drop from 32kb to 64kb. We see a slight
 drop from 256kb to 512kb even though we have 512kb per core because our code takes up part of the
 cache, so we can't fit a whole 512kb sub-buffer into the 512kb cache.
 
-I'm not really sure if I trust that 64mb L3 cache size number. May need more granular tests.
+I'm not sure why 24kb, 30kb, 31kb are slightly slower (by an almost insignificant amount actually)
+than 32kb. I will revisit this in the future. Maybe something is wrong with my non-power-of-two
+assembly routine or with the number of bytes I'm reporting as having been processed...
+
+I'm also not sure why I'm seeing a consistent drop in throughput in the L3 from 512kb+ to 64mb.
+Maybe it's that L3 is shared among all cores on the CPU so there are more cache misses because
+processes running on other cores are also using it.

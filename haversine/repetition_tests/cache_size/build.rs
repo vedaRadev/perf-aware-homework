@@ -6,17 +6,17 @@ fn main() {
     Command::new("nasm")
         .args([
             "-f", "win64",
-            "-o", format!("{out_dir}/read_buffer_masked_asm.o").as_str(),
-            "src/read_buffer_masked.asm"
+            "-o", format!("{out_dir}/cache_tests.o").as_str(),
+            "src/cache_tests.asm"
         ])
         .output()
-        .expect("Failed to assemble read_buffer_masked.asm");
+        .expect("Failed to assemble cache_tests.asm");
 
     Command::new("lib")
-        .arg(format!("{out_dir}/read_buffer_masked_asm.o").as_str())
+        .arg(format!("{out_dir}/cache_tests.o").as_str())
         .output()
-        .expect("Failed to create read_buffer_masked_asm.lib");
+        .expect("Failed to create cache_tests.lib");
 
     println!("cargo:rustc-link-search=native={out_dir}");
-    println!("cargo:rustc-link-lib=static=read_buffer_masked_asm");
+    println!("cargo:rustc-link-lib=static=cache_tests");
 }

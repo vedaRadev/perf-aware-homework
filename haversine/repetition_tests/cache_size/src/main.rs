@@ -1,6 +1,6 @@
 use winapi::um::{
-    winnt::{ MEM_RESERVE, MEM_COMMIT, PAGE_READWRITE },
-    memoryapi::VirtualAlloc
+    winnt::{ MEM_RESERVE, MEM_COMMIT, MEM_RELEASE, PAGE_READWRITE },
+    memoryapi::{ VirtualAlloc, VirtualFree }
 };
 use repetition_tester::{
     RepetitionTester,
@@ -74,7 +74,6 @@ fn main() {
     const NUM_PAGES: usize = BUFFER_SIZE / PAGE_SIZE;
 
     // Using VirtualAlloc because I want to make sure the buffer is aligned to the start of a page.
-    // Not freeing the memory because the repetition tester doesn't actually stop until the process is terminated.
     let buffer_start = unsafe { VirtualAlloc(std::ptr::null_mut(), BUFFER_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) };
     let buffer_start = buffer_start as *mut u8;
 
@@ -148,5 +147,9 @@ fn main() {
     println!("size, throughput (gb/s)");
     for (test_name, TestResults { min, .. }) in results {
         println!("{test_name}, {:.4},", min.get_gbs_throughput(cpu_freq));
+    }
+
+    unsafe {
+        VirtualFree(buffer_start as *mut winapi::ctypes::c_void, BUFFER_SIZE, MEM_RELEASE);
     }
 }

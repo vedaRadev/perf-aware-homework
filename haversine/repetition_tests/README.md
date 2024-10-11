@@ -157,3 +157,13 @@ To run:
 ```
 cargo r --profile reptest --bin reptest_simple_buffer_writes
 ```
+
+### unaligned_load_penalties
+A suite of tests investigating the performance penalties of loading data that straddles cache line boundaries, forcing the CPU to load additional cache lines and stitch results together from multiple load buffers.
+These tests were designed to load data purely from L1 cache, assuming an L1 data cache size of 32kb.
+We read 1gb worth of bytes from a portion of the L1 data cache by repeatedly loading data within a small region of memory, looping over the region multiple times per test.
+
+To run:
+```
+cargo r --profile reptest --bin reptest_unaligned_load_penalties
+```

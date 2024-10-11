@@ -172,6 +172,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_unaligned_load_penalties"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+ "winapi",
+]
+
+[[package]]
 name = "reptest_write_exec_ports"
 version = "0.1.0"
 dependencies = [

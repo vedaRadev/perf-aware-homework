@@ -327,6 +327,7 @@ L1: 64kb (per core)
 L2: 512kb (per core)
 L3: 64mb
 
+SIZE    THROUGHPUT(GB/S)
 4kb	    253.1921
 8kb	    249.7821
 16kb	253.1844
@@ -376,3 +377,24 @@ assembly routine or with the number of bytes I'm reporting as having been proces
 I'm also not sure why I'm seeing a consistent drop in throughput in the L3 from 512kb+ to 64mb.
 Maybe it's that L3 is shared among all cores on the CPU so there are more cache misses because
 processes running on other cores are also using it.
+
+--------------------------------------------------
+UNALIGNED LOAD PENALTIES
+
+OFFSET  THROUGHPUT(GB/S)
+0	    253.3267
+1	    127.9233
+2	    127.1709
+4	    126.8092
+8	    133.36
+16	    128.2825
+24	    126.8558
+32	    253.3267
+48	    130.9663
+56	    129.233
+64	    253.3267
+
+As expected, forcing the CPU to load 2 cache lines into 2 load buffers and stitch them together to
+get a result halves our throughput. An interesting result though is that offsetting a load by 32
+DOESN'T incur that penalty... This could hint at the size of an individual load buffer, though I'll
+have to dig through the microarchitecture manual for my CPU to see if I can find a real answer.

@@ -381,20 +381,32 @@ processes running on other cores are also using it.
 --------------------------------------------------
 UNALIGNED LOAD PENALTIES
 
-OFFSET  THROUGHPUT(GB/S)
-0	    253.3267
-1	    127.9233
-2	    127.1709
-4	    126.8092
-8	    133.36
-16	    128.2825
-24	    126.8558
-32	    253.3267
-48	    130.9663
-56	    129.233
-64	    253.3267
+Table entries are measured in gb/s
 
+offset	16k	(L1)    128k (L2)	32mb (L3)   256mb (RAM)
+0       242.8874	126.6041	56.2896	    29.9816
+1	    131.5153	126.2359	48.1305	    29.9503
+2	    131.5658	126.2258	47.5226	    29.5751
+4	    131.6701	126.2182	48.2048	    29.9928
+8	    131.5998	126.1271	47.492	    30.0092
+16	    131.5004	126.2289	47.6962	    29.966
+24	    131.6706	126.1938	47.5907	    29.9898
+32	    242.8874	126.4146	55.6822	    30.5529
+48	    132.0802	126.1359	44.2921	    29.6253
+56	    132.101	    126.1491	44.5958	    29.5113
+64	    242.8874	126.5344	52.5317	    29.6326
+
+L1:
 As expected, forcing the CPU to load 2 cache lines into 2 load buffers and stitch them together to
 get a result halves our throughput. An interesting result though is that offsetting a load by 32
 DOESN'T incur that penalty... This could hint at the size of an individual load buffer, though I'll
 have to dig through the microarchitecture manual for my CPU to see if I can find a real answer.
+
+L2:
+Interestingly, no change in behavior regardless of change in base pointer offset.
+
+L3:
+Very slight changes in behavior depending on base pointer offset.
+
+RAM:
+No changes really.

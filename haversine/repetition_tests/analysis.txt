@@ -398,9 +398,9 @@ offset	16k	(L1)    128k (L2)	32mb (L3)   256mb (RAM)
 
 L1:
 As expected, forcing the CPU to load 2 cache lines into 2 load buffers and stitch them together to
-get a result halves our throughput. An interesting result though is that offsetting a load by 32
-DOESN'T incur that penalty... This could hint at the size of an individual load buffer, though I'll
-have to dig through the microarchitecture manual for my CPU to see if I can find a real answer.
+get a result halves our throughput. Also note here that the assembly uses ymm registers which are 32
+bytes wide, so with an offset of 32 bytes we're still perfectly aligned and can load using exactly 1
+cache line.
 
 L2:
 Interestingly, no change in behavior regardless of change in base pointer offset.

@@ -189,6 +189,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reptest_nontemporal_stores"
+version = "0.1.0"
+dependencies = [
+ "repetition_tester",
+ "winapi",
+]
+
+[[package]]
 name = "reptest_read_exec_ports"
 version = "0.1.0"
 dependencies = [

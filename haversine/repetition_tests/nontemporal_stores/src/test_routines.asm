@@ -16,77 +16,64 @@
     ; buffer doesn't blow past the end of the output buffer. This knocked the number of params from
     ; 5 down to 4.
 
+    ; The following routines were taken from Casey's implementation because I wasn't able to
+    ; construct a situation where bypassing cache hierarchy was faster than going through it. I
+    ; kept overcomplicating things... :(
 
-    ; Write duplicates of each value in the input buffer to the output buffer, going through the
-    ; cache hierarchy.
-    ;
     ; rcx - start of input buffer
-    ; rdx - size of input buffer (must be a multiple of 128)
-    ; r8  - start of output buffer
-    ; r9  - number of 32-byte writes per input value (must be a multiple of 128)
-    ;
-    ; INVARIANT: # of 32-byte writes per input value * size of input buffer cannot be more than the
-    ; size of the output buffer or bad things may happen.
+    ; rdx - start of output buffer
+    ; r8  - buffer sizes (must be equal and the a multiple of 128)
+    ; r9  - number of times to read buffers
+
 temporal_stores:
     align 64
 
-.read_from_input:
-    vmovdqu ymm0, [rcx]
-    vmovdqu ymm1, [rcx + 32]
-    vmovdqu ymm2, [rcx + 64]
-    vmovdqu ymm3, [rcx + 96]
-    mov rax, r9
+.setup:
+    mov r10, rcx
+    mov r11, rdx
+    mov rax, r8
 
-.write_to_output:
-    ; ryzen 9 5900x can do 1 32-byte store per cycle.
-    ; Doing 4 32-byte stores here should be more than enough to cover the 2-cycle (I think) cost of
-    ; the loop overhead (add, sub, jnz)
-    vmovdqu [r8], ymm0
-    vmovdqu [r8 + 32], ymm1
-    vmovdqu [r8 + 64], ymm2
-    vmovdqu [r8 + 96], ymm3
-    add r8, 128
-    sub rax, 128
-    jnz .write_to_output
+.read_write_buffers:
+    vmovdqu ymm0, [r10]
+    vmovdqu ymm1, [r10 + 0x20]
+    vmovdqu ymm2, [r10 + 0x40]
+    vmovdqu ymm3, [r10 + 0x60]
+    vmovdqu [r11], ymm0
+    vmovdqu [r11 + 0x20], ymm1
+    vmovdqu [r11 + 0x40], ymm2
+    vmovdqu [r11 + 0x60], ymm3
+    add r10, 0x80
+    add r11, 0x80
+    sub rax, 0x80
+    jnz .read_write_buffers
 
-    sub rdx, 128
-    jnz .read_from_input
-
+    dec r9
+    jnz .setup
     ret
 
-    ; Write duplicates of each value in the input buffer to the output buffer, bypassing the cache
-    ; hierarchy.
-    ;
-    ; rcx - start of input buffer
-    ; rdx - size of input buffer (must be a multiple of 128)
-    ; r8  - start of output buffer
-    ; r9  - number of 32-byte writes per input value (must be a multiple of 128)
-    ;
-    ; INVARIANT: # of 32-byte writes per input value * size of input buffer cannot be more than the
-    ; size of the output buffer or bad things may happen.
 nontemporal_stores:
     align 64
 
-.read_from_input:
-    vmovdqu ymm0, [rcx]
-    vmovdqu ymm1, [rcx + 32]
-    vmovdqu ymm2, [rcx + 64]
-    vmovdqu ymm3, [rcx + 96]
-    mov rax, r9
+.setup:
+    mov r10, rcx
+    mov r11, rdx
+    mov rax, r8
 
-.write_to_output:
-    ; ryzen 9 5900x can do 1 32-byte store per cycle.
-    ; Doing 4 32-byte stores here should be more than enough to cover the 2-cycle (I think) cost of
-    ; the loop overhead (add, sub, jnz)
-    vmovntdq [r8], ymm0
-    vmovntdq [r8 + 32], ymm1
-    vmovntdq [r8 + 64], ymm2
-    vmovntdq [r8 + 96], ymm3
-    add r8, 128
-    sub rax, 128
-    jnz .write_to_output
+.read_write_buffers:
+    vmovdqu ymm0, [r10]
+    vmovdqu ymm1, [r10 + 0x20]
+    vmovdqu ymm2, [r10 + 0x40]
+    vmovdqu ymm3, [r10 + 0x60]
+    vmovntdq [r11], ymm0
+    vmovntdq [r11 + 0x20], ymm1
+    vmovntdq [r11 + 0x40], ymm2
+    vmovntdq [r11 + 0x60], ymm3
+    add r10, 0x80
+    add r11, 0x80
+    sub rax, 0x80
+    jnz .read_write_buffers
 
-    sub rdx, 128
-    jnz .read_from_input
-
+    dec r9
+    jnz .setup
     ret
+

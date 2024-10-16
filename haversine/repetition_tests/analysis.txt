@@ -410,3 +410,25 @@ Very slight changes in behavior depending on base pointer offset.
 
 RAM:
 No changes really.
+
+--------------------------------------------------
+NONTEMPORAL STORES
+
+Processing 1073741824 worth of reads/writes
+INPUT/OUTPUT BUFFER SIZE: 67108864
+L1 DATA CACHE SIZE: 16384
+L2 CACHE SIZE: 524288
+L3 CACHE SIZE: 67108864
+cpu frequency estimate: 4250118618
+
+====== temporal stores ======
+Min: 385722393 (90.7557ms) 11.0186gb/s 0pf
+Max: 482286897 (113.4761ms) 8.8124gb/s 0pf
+Avg: 395868318 (93.1429ms) 10.7362gb/s 0pf
+
+====== nontemporal stores ======
+Min: 237659023 (55.9182ms) 17.8833gb/s 0pf
+Max: 325592968 (76.6080ms) 13.0535gb/s 0pf
+Avg: 244321906 (57.4859ms) 17.3956gb/s 0pf
+
+So bypassing the cache hierarchy allows us to do writes without having to worry about needlessly evicting our input buffer from our caches.

@@ -84,7 +84,7 @@ pub struct TestResults {
 
 pub struct SuiteData<'a> {
     pub cpu_freq: u64,
-    pub results: Vec<(&'a str, TestResults)>,
+    pub results: Vec<(&'a String, TestResults)>,
 }
 
 impl<'a> SuiteData<'a> {
@@ -93,20 +93,12 @@ impl<'a> SuiteData<'a> {
     }
 }
 
-pub struct RepetitionTester<'a, TestParams> {
+pub struct RepetitionTester<TestParams> {
     shared_test_params: TestParams,
-    tests: Vec<(Box<dyn TimeTestFunction<TestParams>>, &'a str)>
+    tests: Vec<(Box<dyn TimeTestFunction<TestParams>>, String)>
 }
 
-// TODO update to take ownership of test labels.
-// Will require taking String instead of &str.
-// CANNOT break existing tests by changing the signature of register_test.
-// May need to introduce another function for registering a test with a String, update
-// register_test to take ownership of or duplicate the string slice.
-// 
-// Above would be simpler than having to use const_format to generate static string slices at
-// compile time.
-impl<'a, TestParams> RepetitionTester<'a, TestParams> {
+impl<TestParams> RepetitionTester<TestParams> {
     pub fn new(shared_test_params: TestParams) -> Self {
         Self {
             shared_test_params,
@@ -115,7 +107,20 @@ impl<'a, TestParams> RepetitionTester<'a, TestParams> {
     }
 
     #[inline(always)]
-    pub fn register_test(&mut self, test: impl TimeTestFunction<TestParams> + 'static, test_name: &'a str) {
+    /// Register a test. Originally intended for tests with names known at compile time. This
+    /// function WILL copy whatever string is passed in.
+    /// Use register_test_2 if you need to use a name dynamically created at runtime or if you
+    /// don't want to copy the string.
+    // This function is weird because the repetition tester was originally created with the
+    // assumption that all test names would be static strings. Obviously that didn't hold true
+    // forever and I didn't want to break all the other existing tests...
+    pub fn register_test(&mut self, test: impl TimeTestFunction<TestParams> + 'static, test_name: &str) {
+        self.tests.push((Box::new(test), test_name.to_owned()));
+    }
+
+    #[inline(always)]
+    /// Register a test with a name dynamically created at runtime.
+    pub fn register_test_2(&mut self, test: impl TimeTestFunction<TestParams> + 'static, test_name: String) {
         self.tests.push((Box::new(test), test_name));
     }
 

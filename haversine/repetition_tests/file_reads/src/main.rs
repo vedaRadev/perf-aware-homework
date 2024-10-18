@@ -186,7 +186,7 @@ fn with_buffer_alloc(
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let file_name = args.next().unwrap();
+    let file_name = args.next().expect("expected a file name argument");
     let file_size = fs::metadata(file_name.as_str()).expect("failed to read file metadata").file_size();
     let buffer_layout = Layout::array::<u8>(file_size as usize).expect("failed to create layout for u8 array");
     let buffer_start = unsafe { alloc(buffer_layout) };

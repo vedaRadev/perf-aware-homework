@@ -82,23 +82,31 @@ pub struct TestResults {
     pub max: TimeTestResult
 }
 
-pub struct SuiteData {
+pub struct SuiteData<'a> {
     pub cpu_freq: u64,
-    pub results: Vec<(&'static str, TestResults)>,
+    pub results: Vec<(&'a str, TestResults)>,
 }
 
-impl SuiteData {
+impl<'a> SuiteData<'a> {
     fn new(cpu_freq: u64) -> Self {
         Self { cpu_freq, results: Vec::new() }
     }
 }
 
-pub struct RepetitionTester<TestParams> {
+pub struct RepetitionTester<'a, TestParams> {
     shared_test_params: TestParams,
-    tests: Vec<(Box<dyn TimeTestFunction<TestParams>>, &'static str)>
+    tests: Vec<(Box<dyn TimeTestFunction<TestParams>>, &'a str)>
 }
 
-impl<TestParams> RepetitionTester<TestParams> {
+// TODO update to take ownership of test labels.
+// Will require taking String instead of &str.
+// CANNOT break existing tests by changing the signature of register_test.
+// May need to introduce another function for registering a test with a String, update
+// register_test to take ownership of or duplicate the string slice.
+// 
+// Above would be simpler than having to use const_format to generate static string slices at
+// compile time.
+impl<'a, TestParams> RepetitionTester<'a, TestParams> {
     pub fn new(shared_test_params: TestParams) -> Self {
         Self {
             shared_test_params,
@@ -107,7 +115,7 @@ impl<TestParams> RepetitionTester<TestParams> {
     }
 
     #[inline(always)]
-    pub fn register_test(&mut self, test: impl TimeTestFunction<TestParams> + 'static, test_name: &'static str) {
+    pub fn register_test(&mut self, test: impl TimeTestFunction<TestParams> + 'static, test_name: &'a str) {
         self.tests.push((Box::new(test), test_name));
     }
 

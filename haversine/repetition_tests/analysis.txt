@@ -414,21 +414,75 @@ No changes really.
 --------------------------------------------------
 NONTEMPORAL STORES
 
-Processing 1073741824 worth of reads/writes
-INPUT/OUTPUT BUFFER SIZE: 67108864
+Shows that bypassing the cache hierarchy allows us to do writes without having to worry about
+needlessly evicting our input buffer from our caches. Useful in SOME cases.
+
+Processing 536870912 worth of reads/writes
+INPUT BUFFER SIZE: 524288
+OUTPUT_BUFFER_SIZE: 536870912
+MAX INPUT READS: 1024
 L1 DATA CACHE SIZE: 16384
 L2 CACHE SIZE: 524288
 L3 CACHE SIZE: 67108864
 cpu frequency estimate: 4250118618
 
-====== temporal stores ======
-Min: 385722393 (90.7557ms) 11.0186gb/s 0pf
-Max: 482286897 (113.4761ms) 8.8124gb/s 0pf
-Avg: 395868318 (93.1429ms) 10.7362gb/s 0pf
+====== temporal_test: 16384 byte input region, writing 536870912 bytes ======
+Min: 152962727 (35.9902ms) 13.8927gb/s 0pf
+Max: 168423122 (39.6279ms) 12.6174gb/s 0pf
+Avg: 156840736 (36.9027ms) 13.5492gb/s 0pf
 
-====== nontemporal stores ======
-Min: 237659023 (55.9182ms) 17.8833gb/s 0pf
-Max: 325592968 (76.6080ms) 13.0535gb/s 0pf
-Avg: 244321906 (57.4859ms) 17.3956gb/s 0pf
+====== nontemporal_test: 16384 byte input region, writing 536870912 bytes ======
+Min: 107338765 (25.2555ms) 19.7977gb/s 0pf
+Max: 113188422 (26.6318ms) 18.7745gb/s 0pf
+Avg: 107889662 (25.3851ms) 19.6966gb/s 0pf
 
-So bypassing the cache hierarchy allows us to do writes without having to worry about needlessly evicting our input buffer from our caches.
+====== temporal_test: 32768 byte input region, writing 536870912 bytes ======
+Min: 156827168 (36.8995ms) 13.5503gb/s 0pf
+Max: 167060785 (39.3073ms) 12.7203gb/s 0pf
+Avg: 161141978 (37.9147ms) 13.1875gb/s 0pf
+
+====== nontemporal_test: 32768 byte input region, writing 536870912 bytes ======
+Min: 107322615 (25.2517ms) 19.8007gb/s 0pf
+Max: 112828830 (26.5472ms) 18.8344gb/s 0pf
+Avg: 107995586 (25.4100ms) 19.6773gb/s 0pf
+
+====== temporal_test: 65536 byte input region, writing 536870912 bytes ======
+Min: 156900608 (36.9168ms) 13.5440gb/s 0pf
+Max: 169943050 (39.9855ms) 12.5045gb/s 0pf
+Avg: 160637666 (37.7960ms) 13.2289gb/s 0pf
+
+====== nontemporal_test: 65536 byte input region, writing 536870912 bytes ======
+Min: 107489682 (25.2910ms) 19.7699gb/s 0pf
+Max: 113861325 (26.7902ms) 18.6636gb/s 0pf
+Avg: 108737241 (25.5845ms) 19.5431gb/s 0pf
+
+====== temporal_test: 131072 byte input region, writing 536870912 bytes ======
+Min: 157243752 (36.9975ms) 13.5144gb/s 0pf
+Max: 168700605 (39.6932ms) 12.5966gb/s 0pf
+Avg: 160791232 (37.8322ms) 13.2163gb/s 0pf
+
+====== nontemporal_test: 131072 byte input region, writing 536870912 bytes ======
+Min: 107388702 (25.2672ms) 19.7885gb/s 0pf
+Max: 123625105 (29.0874ms) 17.1895gb/s 0pf
+Avg: 108736713 (25.5844ms) 19.5432gb/s 0pf
+
+====== temporal_test: 262144 byte input region, writing 536870912 bytes ======
+Min: 159089400 (37.4318ms) 13.3576gb/s 0pf
+Max: 258310325 (60.7772ms) 8.2268gb/s 0pf
+Avg: 174706405 (41.1062ms) 12.1636gb/s 0pf
+
+====== nontemporal_test: 262144 byte input region, writing 536870912 bytes ======
+Min: 109854977 (25.8475ms) 19.3442gb/s 0pf
+Max: 124255614 (29.2358ms) 17.1023gb/s 0pf
+Avg: 111409935 (26.2134ms) 19.0742gb/s 0pf
+
+====== temporal_test: 524288 byte input region, writing 536870912 bytes ======
+Min: 157985038 (37.1719ms) 13.4510gb/s 0pf
+Max: 289183770 (68.0413ms) 7.3485gb/s 0pf
+Avg: 164489042 (38.7022ms) 12.9192gb/s 0pf
+
+====== nontemporal_test: 524288 byte input region, writing 536870912 bytes ======
+Min: 108395422 (25.5041ms) 19.6047gb/s 0pf
+Max: 130781042 (30.7712ms) 16.2490gb/s 0pf
+Avg: 111462892 (26.2258ms) 19.0652gb/s 0pf
+

@@ -1,4 +1,5 @@
     global temporal_stores
+    f
     global nontemporal_stores
 
     section .text
@@ -22,15 +23,20 @@
 
     ; rcx - start of input buffer
     ; rdx - start of output buffer
-    ; r8  - buffer sizes (must be equal and the a multiple of 128)
-    ; r9  - number of times to read buffers
+    ; r8  - size of input subregion (must be a multiple of 128)
+    ; r9  - number of times to write subregion
+    ;
+    ; INVARIANT: # times to write input subregion * size of input subregion must not exceed the size
+    ; of the output buffer.
+    ;
+    ; Copy a region of an input buffer to a larger output buffer, wrapping around the input buffer
+    ; region.
 
 temporal_stores:
     align 64
 
 .setup:
     mov r10, rcx
-    mov r11, rdx
     mov rax, r8
 
 .read_write_buffers:
@@ -38,12 +44,12 @@ temporal_stores:
     vmovdqu ymm1, [r10 + 0x20]
     vmovdqu ymm2, [r10 + 0x40]
     vmovdqu ymm3, [r10 + 0x60]
-    vmovdqu [r11], ymm0
-    vmovdqu [r11 + 0x20], ymm1
-    vmovdqu [r11 + 0x40], ymm2
-    vmovdqu [r11 + 0x60], ymm3
+    vmovdqu [rdx], ymm0
+    vmovdqu [rdx + 0x20], ymm1
+    vmovdqu [rdx + 0x40], ymm2
+    vmovdqu [rdx + 0x60], ymm3
     add r10, 0x80
-    add r11, 0x80
+    add rdx, 0x80
     sub rax, 0x80
     jnz .read_write_buffers
 
@@ -56,7 +62,6 @@ nontemporal_stores:
 
 .setup:
     mov r10, rcx
-    mov r11, rdx
     mov rax, r8
 
 .read_write_buffers:
@@ -64,16 +69,15 @@ nontemporal_stores:
     vmovdqu ymm1, [r10 + 0x20]
     vmovdqu ymm2, [r10 + 0x40]
     vmovdqu ymm3, [r10 + 0x60]
-    vmovntdq [r11], ymm0
-    vmovntdq [r11 + 0x20], ymm1
-    vmovntdq [r11 + 0x40], ymm2
-    vmovntdq [r11 + 0x60], ymm3
+    vmovntdq [rdx], ymm0
+    vmovntdq [rdx + 0x20], ymm1
+    vmovntdq [rdx + 0x40], ymm2
+    vmovntdq [rdx + 0x60], ymm3
     add r10, 0x80
-    add r11, 0x80
+    add rdx, 0x80
     sub rax, 0x80
     jnz .read_write_buffers
 
     dec r9
     jnz .setup
     ret
-

@@ -14,15 +14,8 @@ version = "0.1.0"
 authors = ["Ryan Armstrong"]
 description = "Coursework for Casey Muratori's 'Performance Aware Programming' course."
 
-[profile.dev.package.processor]
-opt-level = 0
-debug = true
-
-[profile.dev.package.generator]
-opt-level = 2
-debug = true
-
 # Profile for Repetition Tests
+# TODO rename to perftest and update README documentation
 [profile.reptest]
 inherits = "dev"
 opt-level = "z"

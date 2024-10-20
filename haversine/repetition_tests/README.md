@@ -82,6 +82,14 @@ To run:
 cargo r --profile reptest --bin reptest_cache_size
 ```
 
+### cache_size
+Suit of tests designed to probe what the optimal buffer size is for performing chunked reads of large files.
+
+To run:
+```
+cargo r --profile reptest --bin reptest_cache_size
+```
+
 ### code_alignment
 Tests investigating the performance of code aligned to various byte boundaries.
 The results should showcase the penalties of executing misaligned code or code that straddles cache line boundaries.

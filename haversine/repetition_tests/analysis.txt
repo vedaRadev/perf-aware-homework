@@ -486,3 +486,133 @@ Min: 108395422 (25.5041ms) 19.6047gb/s 0pf
 Max: 130781042 (30.7712ms) 16.2490gb/s 0pf
 Avg: 111462892 (26.2258ms) 19.0652gb/s 0pf
 
+--------------------------------------------------
+CHUNKED READS
+
+I start to get diminishing returns with chunked reads of ~512kb (L2 cache size) and then perf starts
+to tank starting around 8mb, where it seems like page faults begin to dominate the runtime perf.
+The tests using rust's built-in Vec, File, and BufReader structs make it seem like we see no page
+faults but that isn't true. These page faults still happen, it's just that they don't get recorded
+because they aren't captured by the min or max runs. I don't know enough about how Rust's default
+allocator works to really make a determination.
+
+haversine_pairs.json: 1035130964 bytes
+L1 DATA CACHE: 32768
+L2 CACHE: 524288
+L3 CACHE: 67108864
+cpu frequency estimate: 4250118278
+
+====== open and read: bufreader_open_and_read (4096 byte chunks) ======
+Min: 2170762215 (510.7534ms) 1.8875gb/s 0pf
+Max: 2256287706 (530.8765ms) 1.8159gb/s 0pf
+Avg: 2206677310 (519.2037ms) 1.8568gb/s 0pf
+
+====== open and read: bufreader_open_and_read (8192 byte chunks) ======
+Min: 1359403215 (319.8507ms) 3.0140gb/s 0pf
+Max: 1399220955 (329.2193ms) 2.9283gb/s 0pf
+Avg: 1378054944 (324.2392ms) 2.9732gb/s 0pf
+
+====== open and read: bufreader_open_and_read (16384 byte chunks) ======
+Min: 929578190 (218.7182ms) 4.4077gb/s 0pf
+Max: 972200844 (228.7468ms) 4.2144gb/s 0pf
+Avg: 946842459 (222.7803ms) 4.3273gb/s 0pf
+
+====== open and read: bufreader_open_and_read (32768 byte chunks) ======
+Min: 709361677 (166.9040ms) 5.7760gb/s 0pf
+Max: 742568075 (174.7170ms) 5.5177gb/s 0pf
+Avg: 728240406 (171.3459ms) 5.6263gb/s 0pf
+
+====== open and read: bufreader_open_and_read (65536 byte chunks) ======
+Min: 592716772 (139.4589ms) 6.9127gb/s 0pf
+Max: 753723347 (177.3417ms) 5.4361gb/s 0pf
+Avg: 623661977 (146.7399ms) 6.5697gb/s 0pf
+
+====== open and read: bufreader_open_and_read (131072 byte chunks) ======
+Min: 549247517 (129.2311ms) 7.4598gb/s 0pf
+Max: 668369833 (157.2591ms) 6.1303gb/s 0pf
+Avg: 584458199 (137.5157ms) 7.0104gb/s 0pf
+
+====== open and read: bufreader_open_and_read (262144 byte chunks) ======
+Min: 522524920 (122.9436ms) 7.8413gb/s 0pf
+Max: 647839357 (152.4285ms) 6.3245gb/s 0pf
+Avg: 544546333 (128.1250ms) 7.5242gb/s 0pf
+
+====== open and read: bufreader_open_and_read (393216 byte chunks) ======
+Min: 528318265 (124.3067ms) 7.7553gb/s 0pf
+Max: 541810400 (127.4813ms) 7.5622gb/s 0pf
+Avg: 534113109 (125.6702ms) 7.6712gb/s 0pf
+
+====== open and read: bufreader_open_and_read (458752 byte chunks) ======
+Min: 527435795 (124.0991ms) 7.7683gb/s 0pf
+Max: 553930337 (130.3329ms) 7.3968gb/s 0pf
+Avg: 539359664 (126.9046ms) 7.5966gb/s 0pf
+
+====== open and read: bufreader_open_and_read (524288 byte chunks) ======
+Min: 523617255 (123.2006ms) 7.8250gb/s 0pf
+Max: 543070057 (127.7776ms) 7.5447gb/s 0pf
+Avg: 531347897 (125.0196ms) 7.7111gb/s 2pf (505435.0410k/pf)
+
+====== open and read: bufreader_open_and_read (589824 byte chunks) ======
+Min: 522414292 (122.9176ms) 7.8430gb/s 0pf
+Max: 547304588 (128.7740ms) 7.4863gb/s 0pf
+Avg: 530136553 (124.7345ms) 7.7287gb/s 2pf (505435.0410k/pf)
+
+====== open and read: bufreader_open_and_read (655360 byte chunks) ======
+Min: 519515027 (122.2354ms) 7.8868gb/s 0pfpf (6278.6962k/pf)
+Max: 546840232 (128.6647ms) 7.4927gb/s 0pf
+Avg: 535618540 (126.0244ms) 7.6496gb/s 3pf (336956.6940k/pf)
+
+====== open and read: bufreader_open_and_read (1048576 byte chunks) ======
+Min: 520549393 (122.4788ms) 7.8711gb/s 516pf (1959.0505k/pf)
+Max: 543755243 (127.9388ms) 7.5352gb/s 516pf (1959.0505k/pf)
+Avg: 532131786 (125.2040ms) 7.6998gb/s 516pf (1959.0505k/pf)
+
+====== open and read: bufreader_open_and_read (2097152 byte chunks) ======
+Min: 516597360 (121.5489ms) 7.9313gb/s 1029pf (982.3810k/pf)
+Max: 553125388 (130.1435ms) 7.4075gb/s 1029pf (982.3810k/pf)
+Avg: 525545522 (123.6543ms) 7.7963gb/s 1029pf (982.3810k/pf)
+
+====== open and read: bufreader_open_and_read (4194304 byte chunks) ======
+Min: 532835632 (125.3696ms) 7.6896gb/s 2055pf (491.9076k/pf)
+Max: 571639705 (134.4997ms) 7.1676gb/s 2055pf (491.9076k/pf)
+Avg: 554412383 (130.4463ms) 7.3903gb/s 2055pf (491.9076k/pf)
+
+====== open and read: bufreader_open_and_read (8388608 byte chunks) ======
+Min: 520073223 (122.3668ms) 7.8783gb/s 4107pf (246.1335k/pf)
+Max: 553300572 (130.1847ms) 7.4052gb/s 4107pf (246.1335k/pf)
+Avg: 530550009 (124.8318ms) 7.7227gb/s 4107pf (246.1335k/pf)
+
+====== open and read: bufreader_open_and_read (16777216 byte chunks) ======
+Min: 552013800 (129.8820ms) 7.4224gb/s 8211pf (123.1117k/pf)
+Max: 602221175 (141.6952ms) 6.8036gb/s 8211pf (123.1117k/pf)
+Avg: 566963284 (133.3994ms) 7.2267gb/s 8211pf (123.1117k/pf)
+
+====== open and read: bufreader_open_and_read (33554432 byte chunks) ======
+Min: 642103132 (151.0789ms) 6.3810gb/s 16419pf (61.5671k/pf)
+Max: 696232578 (163.8149ms) 5.8849gb/s 16419pf (61.5671k/pf)
+Avg: 656174207 (154.3896ms) 6.2442gb/s 16419pf (61.5671k/pf)
+
+====== open and read: bufreader_open_and_read (67108864 byte chunks) ======
+Min: 721647832 (169.7948ms) 5.6777gb/s 32835pf (30.7864k/pf)
+Max: 899658955 (211.6786ms) 4.5543gb/s 32835pf (30.7864k/pf)
+Avg: 759718738 (178.7524ms) 5.3932gb/s 32835pf (30.7864k/pf)
+
+====== open and read: bufreader_open_and_read (134217728 byte chunks) ======
+Min: 786650434 (185.0891ms) 5.2085gb/s 65667pf (15.3939k/pf)
+Max: 853104922 (200.7250ms) 4.8028gb/s 65667pf (15.3939k/pf)
+Avg: 802945997 (188.9232ms) 5.1028gb/s 65667pf (15.3939k/pf)
+
+====== open and read: bufreader_open_and_read (268435456 byte chunks) ======
+Min: 866405298 (203.8544ms) 4.7291gb/s 131332pf (7.6971k/pf)
+Max: 1064994070 (250.5799ms) 3.8472gb/s 131332pf (7.6971k/pf)
+Avg: 880758080 (207.2314ms) 4.6520gb/s 131332pf (7.6971k/pf)
+
+====== open and read: bufreader_open_and_read (536870912 byte chunks) ======
+Min: 1006648157 (236.8518ms) 4.0702gb/s 262660pf (3.8486k/pf)
+Max: 1042005990 (245.1711ms) 3.9321gb/s 262660pf (3.8486k/pf)
+Avg: 1022214096 (240.5143ms) 4.0082gb/s 262660pf (3.8486k/pf)
+
+====== open and read: bufreader_open_and_read (1073741824 byte chunks) ======
+Min: 1261863419 (296.9008ms) 3.2470gb/s 525317pf (1.9243k/pf)
+Max: 1877794839 (441.8218ms) 2.1820gb/s 525317pf (1.9243k/pf)
+Avg: 1311134901 (308.4937ms) 3.1250gb/s 525317pf (1.9243k/pf)

@@ -129,7 +129,7 @@ impl __GlobalProfiler {
 
         #[cfg(feature = "profiling")]
         for section in &self.sections {
-            if section.is_none() { break; }
+            if section.is_none() { continue; }
             let section = section.as_ref().unwrap();
 
             print!("\t{} [{}]: {} ({:.4}%", section.label, section.hits, section.exclusive_cycles, section.exclusive_cycles as f64 / global_cycles as f64 * 100.0);

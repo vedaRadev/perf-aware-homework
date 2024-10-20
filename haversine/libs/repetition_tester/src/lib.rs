@@ -13,9 +13,9 @@ const LINE_CLEAR: [u8; 64] = [b' '; 64];
 
 #[derive(Default)]
 pub struct TimeTestResult {
-    cycles_elapsed: u64,
-    bytes_processed: u64,
-    page_faults: u64,
+    pub cycles_elapsed: u64,
+    pub bytes_processed: u64,
+    pub page_faults: u64,
 }
 
 impl TimeTestResult {
